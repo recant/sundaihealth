@@ -2,7 +2,7 @@
 
 PulseLab is a research prototype for **continuous, event-triggered blood testing from wearable physiology**.
 
-There is no “Analyze” button and no LLM in the decision path. The app continuously recomputes whenever wearable values change.
+There is no “Analyze” button and no LLM in the decision path. The app continuously recomputes whenever new wearable data arrives.
 
 ## Model
 
@@ -18,35 +18,62 @@ The exported MLP weights run directly in the browser. A personal physiology-drif
 
 The target is **expected screening yield**, not diagnosis or proof that testing is medically necessary. This is not a validated medical device.
 
+## WHOOP integration
+
+PulseLab supports WHOOP OAuth directly. The user experience is:
+
+```text
+Connect WHOOP
+→ authorize PulseLab on WHOOP
+→ return to PulseLab
+→ recent Recovery + Sleep history syncs automatically
+→ personal baseline updates
+→ BloodNeedNet recommendation updates
+```
+
+The server requests only `read:recovery`, `read:sleep`, and `offline`. It uses the refresh token to renew short-lived WHOOP access tokens. Tokens are encrypted before being stored in an HttpOnly, Secure, SameSite cookie; the browser JavaScript never receives the WHOOP client secret or raw access token.
+
+The sync endpoint currently backfills up to roughly 90 days and uses WHOOP Recovery for resting HR, HRV, SpO₂, and skin temperature, plus WHOOP Sleep for respiratory rate and sleep-stage duration.
+
+### One-time WHOOP developer setup
+
+Create an app in the WHOOP Developer Dashboard and register this callback URL:
+
+```text
+https://YOUR-STABLE-VERCEL-DOMAIN/api/whoop/callback
+```
+
+Request these scopes:
+
+```text
+read:recovery
+read:sleep
+offline
+```
+
+Then configure these Vercel environment variables:
+
+```text
+WHOOP_CLIENT_ID=<WHOOP client id>
+WHOOP_CLIENT_SECRET=<WHOOP client secret>
+WHOOP_REDIRECT_URI=https://YOUR-STABLE-VERCEL-DOMAIN/api/whoop/callback
+SESSION_SECRET=<long random secret>
+```
+
+After redeploying, the **Connect WHOOP** button performs the real OAuth flow.
+
 ## Deploy on Vercel
 
 Import `recant/sundaihealth` and set **Root Directory** to `frontend`.
 
-`frontend/vercel.json` handles the rest. During every deployment Vercel runs:
-
-```text
-install scientific Python dependencies
-→ download the public NHANES XPT files from CDC
-→ train BloodNeedNet with participant-level holdout
-→ export dist/model/bloodneed-model.json
-→ publish the static app
-```
-
-No Gemini key or other API key is required.
-
-From the CLI, once authenticated with Vercel:
+The trained `frontend/model/bloodneed-model.json` is committed to the repository. Deployment simply packages that artifact and the static UI; retraining is a separate operation.
 
 ```bash
 cd frontend
 npx vercel --prod
 ```
 
-For an unclaimed temporary deployment:
-
-```bash
-cd frontend
-npx vercel deploy --temporary
-```
+A stable project URL is strongly recommended for WHOOP OAuth because WHOOP requires the redirect URI to exactly match a URL registered in its Developer Dashboard.
 
 ## Train locally
 
@@ -54,19 +81,12 @@ npx vercel deploy --temporary
 cd frontend
 python -m pip install -r requirements-build.txt
 python train_model.py
+python build.py
 ```
-
-This writes `frontend/model/bloodneed-model.json`. To test the static app locally after training:
-
-```bash
-python -m http.server 8000
-```
-
-Then open `http://localhost:8000`. Every field edit reruns inference automatically.
 
 ## Repository training workflow
 
-`training/train_model.py` provides the same training logic for GitHub Actions. `.github/workflows/train-model.yml` can retrain and commit the model artifact from the repository environment.
+`training/train_model.py` provides the same training logic for GitHub Actions. `.github/workflows/train-model.yml` can be run manually to retrain and commit the model artifact.
 
 ## Data used in v0.1
 
