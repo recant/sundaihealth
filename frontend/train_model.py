@@ -120,10 +120,10 @@ def train(out: pathlib.Path):
             early_stopping=True,validation_fraction=.15,random_state=42))])
     pipe.fit(X.iloc[tr],Y.iloc[tr]); probs=pipe.predict_proba(X.iloc[te]); metrics={}
     for j,name in enumerate(OUTPUTS):
-        y=Y.iloc[te,name].to_numpy()
+        y=Y[name].iloc[te].to_numpy()
         try: metrics[name]=round(float(roc_auc_score(y,probs[:,j])),3)
         except Exception: metrics[name]=None
-    model={'name':'BloodNeedNet','version':'0.1.0','trained_on':'NHANES 2013-2014 wrist accelerometry + same-participant labs',
+    model={'name':'BloodNeedNet','version':'0.1.1','trained_on':'NHANES 2013-2014 wrist accelerometry + same-participant labs',
         'target_definition':'probability that a focused screening panel contains at least one prespecified out-of-range result',
         'panel_model':export_mlp(pipe,metrics,len(df),df.SEQN.nunique()),
         'panel_tests':{
