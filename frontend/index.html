@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PulseLab — adaptive blood testing</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">P</span><span>PulseLab</span></div>
+      <nav>
+        <button class="nav-item active"><span>◉</span>Overview</button>
+        <button class="nav-item"><span>⌁</span>Signals</button>
+        <button class="nav-item"><span>⊞</span>Labs</button>
+        <button class="nav-item"><span>≋</span>Datasets</button>
+      </nav>
+      <div class="side-note">
+        <div class="eyebrow">Research prototype</div>
+        <p>Wearables decide when another blood draw is likely to reveal useful new information.</p>
+      </div>
+    </aside>
+
+    <main>
+      <header>
+        <div>
+          <div class="eyebrow">Adaptive diagnostics</div>
+          <h1>Blood testing, triggered by physiology.</h1>
+        </div>
+        <div class="scenario-control">
+          <label for="scenario">Demo state</label>
+          <select id="scenario"></select>
+        </div>
+      </header>
+
+      <section class="hero-grid">
+        <article class="card decision-card">
+          <div class="card-head">
+            <div>
+              <div class="eyebrow">Current recommendation</div>
+              <h2 id="status">—</h2>
+            </div>
+            <div class="score-ring" id="scoreRing"><span id="score">0%</span></div>
+          </div>
+          <p id="subtitle" class="muted"></p>
+          <div class="decision-metrics">
+            <div><span class="metric-label">Model confidence</span><strong id="confidence">—</strong></div>
+            <div><span class="metric-label">Physiology anomaly</span><strong id="anomaly">—</strong></div>
+            <div><span class="metric-label">Last blood draw</span><strong id="days">—</strong></div>
+          </div>
+          <div class="recommendation" id="recommendation"></div>
+        </article>
+
+        <article class="card timeline-card">
+          <div class="card-title-row">
+            <div><div class="eyebrow">7-day personal trajectory</div><h3>Wearable deviation</h3></div>
+            <div class="legend"><span class="dot hr"></span>RHR <span class="dot hrv"></span>HRV <span class="dot sleep"></span>Sleep</div>
+          </div>
+          <div id="timeline" class="timeline"></div>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="card labs-card">
+          <div class="card-title-row">
+            <div><div class="eyebrow">Predicted lab movement</div><h3>What might have changed?</h3></div>
+            <span class="chip">iPOP + NHANES + BIG IDEAs</span>
+          </div>
+          <div id="labs"></div>
+        </article>
+        <article class="card reasons-card">
+          <div class="eyebrow">Why this recommendation?</div>
+          <h3>Evidence stack</h3>
+          <div id="reasons"></div>
+        </article>
+      </section>
+
+      <section class="card sources-card">
+        <div class="card-title-row">
+          <div><div class="eyebrow">Multi-dataset ensemble</div><h3>Every dataset has a different job</h3></div>
+          <div class="availability"><span class="live-dot"></span> Public sources wired</div>
+        </div>
+        <div id="sources" class="sources-grid"></div>
+      </section>
+
+      <footer>Research demo only — not validated for clinical decision-making.</footer>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
