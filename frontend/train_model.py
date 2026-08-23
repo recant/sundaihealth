@@ -53,28 +53,51 @@ def build_examples() -> pd.DataFrame:
     labs = demo[['SEQN','RIDAGEYR','RIAGENDR']].copy()
     for df in (ghb, cbc, bio, hdl):
         labs = labs.merge(df, on='SEQN', how='left')
+
     male = labs['RIAGENDR'].eq(1)
-    gly = col(labs,'LBXGH').ge(5.7)
+    a1c = col(labs,'LBXGH')
+    wbc = col(labs,'LBXWBCSI')
+    platelets = col(labs,'LBXPLTSI')
+    hgb = col(labs,'LBXHGB')
+    albumin = col(labs,'LBXSAL')
+    creatinine = col(labs,'LBXSCR')
+    alt = col(labs,'LBXSATSI')
+    ast = col(labs,'LBXSASSI')
+    potassium = col(labs,'LBXSKSI')
+    sodium = col(labs,'LBXSNASI')
+    hdl_value = col(labs,'LBDHDD')
+    total_chol = col(labs,'LBXSCH')
+
+    gly = a1c.ge(5.7)
     cbc_bad = (
-        col(labs,'LBXWBCSI').lt(4.0) | col(labs,'LBXWBCSI').gt(11.0) |
-        col(labs,'LBXPLTSI').lt(150) | col(labs,'LBXPLTSI').gt(450) |
-        (male & (col(labs,'LBXHGB').lt(13.0) | col(labs,'LBXHGB').gt(17.5))) |
-        (~male & (col(labs,'LBXHGB').lt(12.0) | col(labs,'LBXHGB').gt(15.5)))
+        wbc.lt(4.0) | wbc.gt(11.0) |
+        platelets.lt(150) | platelets.gt(450) |
+        (male & (hgb.lt(13.0) | hgb.gt(17.5))) |
+        (~male & (hgb.lt(12.0) | hgb.gt(15.5)))
     )
     metabolic = (
-        col(labs,'LBXSAL').lt(3.5) |
-        col(labs,'LBXSCR').gt(np.where(male,1.3,1.1)) |
-        col(labs,'LBXSATSI').gt(np.where(male,55,45)) |
-        col(labs,'LBXSASSI').gt(40) |
-        col(labs,'LBXSKSI').lt(3.5) | col(labs,'LBXSKSI').gt(5.1) |
-        col(labs,'LBXSNASI').lt(135) | col(labs,'LBXSNASI').gt(145)
+        albumin.lt(3.5) |
+        creatinine.gt(np.where(male,1.3,1.1)) |
+        alt.gt(np.where(male,55,45)) |
+        ast.gt(40) |
+        potassium.lt(3.5) | potassium.gt(5.1) |
+        sodium.lt(135) | sodium.gt(145)
     )
-    lipid = col(labs,'LBDHDD').lt(np.where(male,40,50)) | col(labs,'LBXSCH').ge(240)
+    lipid = hdl_value.lt(np.where(male,40,50)) | total_chol.ge(240)
+
     labs['glycemic'] = gly.fillna(False).astype(int)
     labs['cbc'] = cbc_bad.fillna(False).astype(int)
     labs['metabolic'] = metabolic.fillna(False).astype(int)
     labs['lipid'] = lipid.fillna(False).astype(int)
     labs['any_abnormal'] = labs[['glycemic','cbc','metabolic','lipid']].max(axis=1)
+
+    # The analog bank only uses people with observed values for every target family.
+    # This prevents a missing lab from being displayed as a reassuring "normal" analog outcome.
+    labs['analog_complete'] = (
+        a1c.notna() & wbc.notna() & platelets.notna() & hgb.notna() &
+        albumin.notna() & creatinine.notna() & alt.notna() & ast.notna() &
+        potassium.notna() & sodium.notna() & hdl_value.notna() & total_chol.notna()
+    )
 
     rows=[]
     for seqn,g in pax.groupby('SEQN'):
@@ -97,7 +120,7 @@ def build_examples() -> pd.DataFrame:
             rows.append({'SEQN':seqn,'baseline_sleep_h':base_sleep,'current_sleep_h':cur_sleep,
                 'sleep_delta_pct':pct(cur_sleep,base_sleep),'activity_delta_pct':pct(cur_act,base_act),
                 'persistence_days':min(persistence,7)})
-    x=pd.DataFrame(rows).merge(labs[['SEQN','RIDAGEYR','RIAGENDR']+OUTPUTS],on='SEQN',how='inner')
+    x=pd.DataFrame(rows).merge(labs[['SEQN','RIDAGEYR','RIAGENDR','analog_complete']+OUTPUTS],on='SEQN',how='inner')
     x=x.rename(columns={'RIDAGEYR':'age'}); x['sex_male']=x['RIAGENDR'].eq(1).astype(float)
     return x[(x['age']>=18)&(x['age']<=85)]
 
@@ -109,6 +132,35 @@ def export_mlp(pipe, metrics, n, n_people):
         'layers':[w.tolist() for w in net.coefs_],'biases':[b.tolist() for b in net.intercepts_],
         'activation':'relu','output_activation':'sigmoid','training_rows':int(n),'training_participants':int(n_people),
         'heldout_auc':metrics}
+
+
+def export_analog_bank(pipe, train_df: pd.DataFrame, max_people: int = 600):
+    eligible = train_df[train_df['analog_complete'].fillna(False)].copy()
+    if eligible.empty:
+        return {'source':'NHANES 2013-2014','records':[]}
+
+    # One representative wearable day per participant; never export SEQN itself.
+    rep = eligible.sort_values(['SEQN']).groupby('SEQN', group_keys=False).tail(1).copy()
+    if len(rep) > max_people:
+        rep = rep.sample(max_people, random_state=42).sort_values('SEQN')
+
+    imp = pipe.named_steps['imputer']
+    scaler = pipe.named_steps['scaler']
+    z = scaler.transform(imp.transform(rep[FEATURES]))
+    records=[]
+    for i,(_,row) in enumerate(rep.reset_index(drop=True).iterrows()):
+        age=int(row['age']); lo=(age//10)*10; hi=lo+9
+        records.append({
+            'id':f'NH-A{i+1:04d}',
+            'age_band':f'{lo}-{hi}',
+            'z':[round(float(v),4) for v in z[i]],
+            'outcomes':{name:int(row[name]) for name in OUTPUTS},
+        })
+    return {
+        'source':'NHANES 2013-2014 anonymized complete-lab training participants',
+        'meaning':'nearest neighbors in standardized BloodNeedNet input space; outcomes are same-participant lab targets, not later disease',
+        'records':records,
+    }
 
 
 def train(out: pathlib.Path):
@@ -123,16 +175,25 @@ def train(out: pathlib.Path):
         y=Y[name].iloc[te].to_numpy()
         try: metrics[name]=round(float(roc_auc_score(y,probs[:,j])),3)
         except Exception: metrics[name]=None
-    model={'name':'BloodNeedNet','version':'0.1.1','trained_on':'NHANES 2013-2014 wrist accelerometry + same-participant labs',
+
+    analog_bank=export_analog_bank(pipe,df.iloc[tr])
+    model={'name':'BloodNeedNet','version':'0.2.0','trained_on':'NHANES 2013-2014 wrist accelerometry + same-participant labs',
         'target_definition':'probability that a focused screening panel contains at least one prespecified out-of-range result',
+        'forecast_capabilities':{
+            'supports_current_lab_yield':True,
+            'supports_persistence_scenario_projection':True,
+            'supports_future_disease_incidence':False,
+            'future_disease_note':'Requires longitudinal wearable data linked to later adjudicated disease outcomes.'
+        },
         'panel_model':export_mlp(pipe,metrics,len(df),df.SEQN.nunique()),
+        'analog_bank':analog_bank,
         'panel_tests':{
             'glycemic':{'name':'Hemoglobin A1c','description':'Longer-term glycemic status.'},
             'cbc':{'name':'Complete blood count (CBC)','description':'Hemoglobin, white cells, and platelets.'},
             'metabolic':{'name':'Comprehensive metabolic panel (CMP)','description':'Kidney, liver, electrolyte, protein, and glucose context.'},
             'lipid':{'name':'Lipid panel','description':'Cholesterol and cardiovascular-risk context.'}}}
     out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(model,separators=(',',':')))
-    print(json.dumps({'rows':len(df),'participants':int(df.SEQN.nunique()),'auc':metrics},indent=2))
+    print(json.dumps({'rows':len(df),'participants':int(df.SEQN.nunique()),'analogs':len(analog_bank['records']),'auc':metrics},indent=2))
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(); p.add_argument('--out',default='model/bloodneed-model.json'); a=p.parse_args()
