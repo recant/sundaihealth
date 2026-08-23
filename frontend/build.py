@@ -14,7 +14,10 @@ if DIST.exists():
     shutil.rmtree(DIST)
 DIST.mkdir()
 
-for name in ['index.html', 'app.js', 'styles.css', 'whoop.css', 'model-runtime.js', 'personalization.js']:
+for name in [
+    'index.html', 'app.js', 'styles.css', 'whoop.css',
+    'telemetry.css', 'telemetry.js', 'model-runtime.js', 'personalization.js'
+]:
     shutil.copy2(HERE / name, DIST / name)
 
 (DIST / 'model').mkdir()
