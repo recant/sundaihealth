@@ -28,21 +28,21 @@
   </header>
 
   <section class="tab-panel active" id="tab-live" data-tab-panel="live">
-    <div class="tab-hero compact-copy"><div><div class="eyebrow">Live data</div><h1>Something changed.</h1></div></div>
+    <div class="tab-hero compact-copy"><div><div class="eyebrow">Live physiology</div><h1>Current physiology compared with your baseline.</h1><p>PulseLab compares the simulated live stream with the baseline learned from your uploaded WHOOP history. The signal becomes meaningful when several measurements move together, not when one number briefly changes.</p></div></div>
 
     <section id="liveAlertCard" class="card live-alert waiting">
       <div>
-        <div id="liveAlertKicker" class="alert-kicker">WAITING FOR YOUR HISTORY</div>
-        <h2 id="liveAlertTitle">Upload your WHOOP export.</h2>
-        <p id="liveAlertBody">Then PulseLab can compare this live stream with what is normal for you.</p>
+        <div id="liveAlertKicker" class="alert-kicker">BASELINE REQUIRED</div>
+        <h2 id="liveAlertTitle">Upload WHOOP history to establish your normal range.</h2>
+        <p id="liveAlertBody">PulseLab needs prior measurements before it can determine whether the current live pattern is materially different from your usual physiology.</p>
       </div>
-      <button id="liveAlertAction" class="alert-action hidden" data-go-tab="testing" type="button">See the test</button>
+      <button id="liveAlertAction" class="alert-action hidden" data-go-tab="testing" type="button">Review testing recommendation</button>
       <div id="liveAlertMetrics" class="alert-metrics"></div>
     </section>
 
     <section class="telemetry-shell is-alert" aria-label="Simulated live physiology">
       <div class="telemetry-head">
-        <div><div class="eyebrow">Simulated live data</div><h2>Right now</h2></div>
+        <div><div class="eyebrow">Simulated live data</div><h2>Current measurements</h2></div>
         <div id="telemetrySource" class="telemetry-badge">SIMULATED LIVE</div>
       </div>
       <div class="telemetry-grid">
@@ -64,20 +64,29 @@
         <div class="telemetry-metric"><span>HRV</span><strong id="telemetryHrv">24 ms</strong></div>
         <div class="telemetry-metric"><span>Breathing</span><strong id="telemetryResp">20.8 /min</strong></div>
         <div class="telemetry-metric"><span>Blood oxygen</span><strong id="telemetrySpo2">92.8%</strong></div>
-        <div class="telemetry-metric"><span>Skin temp</span><strong id="telemetryTemp">34.65 °C</strong></div>
+        <div class="telemetry-metric"><span>Skin temperature</span><strong id="telemetryTemp">34.65 °C</strong></div>
       </div>
-      <div class="telemetry-foot"><span><strong>Simulated:</strong> only this live stream is fake.</span><span>Your uploaded history stays separate.</span></div>
+      <div class="telemetry-foot"><span><strong>Demo live stream:</strong> these current values are simulated.</span><span>Your imported WHOOP history is stored separately and used only as the baseline.</span></div>
+    </section>
+
+    <section class="card live-method-card">
+      <div><div class="eyebrow">How this page is interpreted</div><h2>Baseline, current state, then a multi-signal check.</h2></div>
+      <div class="live-method-grid">
+        <div><span>1 · Baseline</span><strong id="baselineMethodTitle">Waiting for history</strong><p id="baselineMethodBody">Upload prior WHOOP measurements so PulseLab can estimate your usual range for each signal.</p></div>
+        <div><span>2 · Current state</span><strong>Simulated live measurements</strong><p id="currentMethodBody">The live stream is intentionally abnormal for this demo. It is never mixed into your historical baseline.</p></div>
+        <div><span>3 · Trigger</span><strong id="triggerMethodTitle">No comparison yet</strong><p id="triggerMethodBody">Testing is suggested only when several independent measurements move far enough from the learned baseline at the same time.</p></div>
+      </div>
     </section>
 
     <section class="card import-card">
       <div>
-        <div class="eyebrow">Your WHOOP history</div>
-        <h2>Upload <code>physiological_cycles.csv</code></h2>
-        <p>WHOOP → Data Export → choose the physiological cycles CSV.</p>
+        <div class="eyebrow">Personal baseline</div>
+        <h2>Import WHOOP physiological history</h2>
+        <p>Upload <code>physiological_cycles.csv</code>. PulseLab parses the daily measurements in your browser and uses the prior history to estimate your normal range.</p>
       </div>
       <label class="csv-button" for="whoopCsvInput">Choose CSV</label>
       <input id="whoopCsvInput" type="file" accept=".csv,text/csv" hidden>
-      <div id="csvImportStatus" class="csv-status">No history loaded.</div>
+      <div id="csvImportStatus" class="csv-status">No WHOOP history loaded.</div>
       <div class="profile-mini">
         <span id="profileStage">No baseline yet</span>
         <strong id="profileDays">0 days</strong>
@@ -88,22 +97,22 @@
   </section>
 
   <section class="tab-panel" id="tab-measurements" data-tab-panel="measurements">
-    <div class="tab-hero compact-copy"><div><div class="eyebrow">Measurements</div><h1>Your history.</h1></div></div>
+    <div class="tab-hero compact-copy"><div><div class="eyebrow">Measurements</div><h1>Your measurements over time.</h1><p>This page shows only the WHOOP history you imported. Use it to see the baseline period, recent trend, and whether the final days are moving away from your usual range.</p></div></div>
     <div id="measurementsContent"></div>
   </section>
 
   <section class="tab-panel" id="tab-testing" data-tab-panel="testing">
-    <div class="tab-hero compact-copy"><div><div class="eyebrow">Testing</div><h1>What to do next.</h1></div></div>
+    <div class="tab-hero compact-copy"><div><div class="eyebrow">Testing</div><h1>Testing recommendation.</h1><p>PulseLab combines the size of the current deviations, the number of signals that changed together, and your prior baseline to decide whether another measurement is justified and which panel would add useful information.</p></div></div>
     <div id="testingContent"></div>
   </section>
 
   <section class="tab-panel" id="tab-population" data-tab-panel="population">
-    <div class="tab-hero compact-copy"><div><div class="eyebrow">Population</div><h1>People who looked like this.</h1><p>Drag the map. Click a person to see what actually happened.</p></div></div>
+    <div class="tab-hero compact-copy"><div><div class="eyebrow">Population</div><h1>Comparison with published participants.</h1><p>Node distance reflects shared directional changes in wearable signals. Select a participant to inspect the source study, the measurements reported, the event timeline, and the reason that case is considered similar.</p></div></div>
     <div id="populationContent"></div>
   </section>
 
   <section class="tab-panel" id="tab-assistant" data-tab-panel="assistant">
-    <div class="tab-hero compact-copy"><div><div class="eyebrow">Ask PulseLab</div><h1>Ask a question.</h1></div></div>
+    <div class="tab-hero compact-copy"><div><div class="eyebrow">Ask PulseLab</div><h1>Ask about the recommendation.</h1><p>The assistant can explain which measurements changed, why a particular test was selected, and what happened to the published participant you are comparing against.</p></div></div>
     <div id="assistantContent" class="assistant-shell"></div>
   </section>
 
@@ -122,7 +131,7 @@
     </div>
   </div>
 
-  <footer>Prototype. It can suggest a test; it cannot diagnose you.</footer>
+  <footer>Research prototype. Recommendations are generated from wearable deviations and published study comparisons; they are not diagnoses or medical orders.</footer>
 </main>
 <script type="module" src="app.js"></script>
 <script type="module" src="telemetry.js"></script>
