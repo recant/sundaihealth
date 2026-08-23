@@ -80,6 +80,29 @@ function dashboardSnapshot() {
   };
 }
 
+function localFallback(message, snapshot = dashboardSnapshot()) {
+  const q = String(message || '').toLowerCase();
+  const severe = /(chest pain|chest pressure|can't breathe|cannot breathe|severe shortness of breath|faint(ed|ing)?|passed out|confusion|one[- ]sided weakness|severe bleeding)/i.test(message || '');
+  if (severe) {
+    return 'Those symptoms can require prompt medical evaluation. PulseLab is not designed to decide whether an emergency symptom is safe to watch at home, so do not rely on its testing score for that decision. Seek urgent/emergency medical care now if the symptom is severe or ongoing.';
+  }
+  if (/(doctor|physician|urgent care|\ber\b|emergency)/i.test(q)) {
+    const scoreText = Number.isFinite(snapshot.score) ? ` Its testing-priority score is ${snapshot.score}/100.` : '';
+    return `${snapshot.recommendation}.${scoreText} That result estimates whether blood testing may be informative; it does not determine whether you medically need a doctor. A quiet score cannot rule out illness. If you have new, persistent, worsening, or concerning symptoms, clinician evaluation can still be appropriate. What symptoms, if any, are you having right now?`;
+  }
+  if (/(why.*(not|no)|shouldn.t|should not|no test|not recommending)/i.test(q)) {
+    return `PulseLab is only saying it does not currently see a strong wearable-driven reason for blood testing. It is not saying that nothing is wrong or that you should avoid a doctor. ${snapshot.summary || 'The model combines population-level prediction with deviation from the person’s baseline.'}`;
+  }
+  if (/(what changed|baseline|why now|driver)/i.test(q)) {
+    const reasons = snapshot.reasons?.length ? snapshot.reasons.join(' ') : 'No model drivers are displayed yet.';
+    return `PulseLab compares today's physiology with the learned personal baseline. The strongest displayed drivers are: ${reasons} The synthetic moving telemetry is visualization only and is not treated as clinical evidence.`;
+  }
+  if (/(which.*test|blood test|panel)/i.test(q) && snapshot.ranked_tests?.length) {
+    return `The current ranking is: ${snapshot.ranked_tests.join(' ')} These are model estimates of expected testing yield, not medical orders.`;
+  }
+  return `${snapshot.recommendation}. ${snapshot.summary || 'PulseLab combines a population-trained blood-testing model with a personal wearable baseline.'} Ask me what changed, why a test is ranked highly, or what this result does—and does not—say about seeing a doctor.`;
+}
+
 function ensureChatStyles() {
   if (document.querySelector('link[data-pulselab-chat]')) return;
   const link = document.createElement('link');
@@ -185,6 +208,7 @@ async function sendChat(message) {
   $('chatInput').value = '';
   setBusy(true);
 
+  const snapshot = dashboardSnapshot();
   const pending = appendMessage('assistant', 'Reading the current model state…', true);
   try {
     const response = await fetch('/api/chat', {
@@ -192,25 +216,28 @@ async function sendChat(message) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: clean,
-        snapshot: dashboardSnapshot(),
+        snapshot,
         history: chatHistory.slice(0, -1),
       }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `Chat failed (${response.status})`);
 
-    const reply = String(data.reply || 'I could not generate an explanation for that.').trim();
+    const reply = String(data.reply || localFallback(clean, snapshot)).trim();
     pending.querySelector('.chat-bubble').textContent = reply;
     pending.classList.remove('pending');
     chatHistory.push({ role: 'assistant', text: reply });
     while (chatHistory.length > CHAT_HISTORY_LIMIT) chatHistory.shift();
     $('chatMode').textContent = data.mode === 'gemini'
       ? `${data.model || 'Gemini'} · dashboard-aware explanation`
-      : 'Safety fallback · add GEMINI_API_KEY for full conversation';
-  } catch (error) {
-    pending.querySelector('.chat-bubble').textContent = `The chat endpoint is unavailable right now. The BloodNeedNet dashboard is still running; this explanation layer is separate. ${error.message || ''}`.trim();
+      : 'Local safety explainer · Gemini optional';
+  } catch (_) {
+    const reply = localFallback(clean, snapshot);
+    pending.querySelector('.chat-bubble').textContent = reply;
     pending.classList.remove('pending');
-    pending.classList.add('error');
+    chatHistory.push({ role: 'assistant', text: reply });
+    while (chatHistory.length > CHAT_HISTORY_LIMIT) chatHistory.shift();
+    $('chatMode').textContent = 'Local safety explainer · server chat unavailable';
   } finally {
     setBusy(false);
     $('chatInput').focus();
