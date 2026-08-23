@@ -1,101 +1,144 @@
-const $ = (id) => document.getElementById(id);
+const METRICS = [
+  ['resting_hr', 'Resting heart rate', 'bpm'],
+  ['hrv', 'HRV (RMSSD)', 'ms'],
+  ['sleep_hours', 'Sleep duration', 'hours'],
+  ['steps', 'Daily steps', 'steps'],
+  ['temperature_c', 'Temperature', '°C'],
+  ['spo2', 'SpO₂', '%'],
+  ['respiratory_rate', 'Respiratory rate', '/min'],
+  ['cgm_mean', 'CGM mean glucose', 'mg/dL'],
+  ['cgm_cv', 'CGM variability (CV)', '%']
+];
 
-async function boot() {
-  const data = await fetch('demo_data.json').then(r => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
+const $ = id => document.getElementById(id);
+
+function makeMetricRows() {
+  $('metricRows').innerHTML = METRICS.map(([key, label, unit]) => `
+    <div class="metric-row">
+      <label for="b_${key}"><strong>${label}</strong><small>${unit}</small></label>
+      <input id="b_${key}" data-kind="baseline" data-key="${key}" type="number" step="any" placeholder="—" />
+      <input id="c_${key}" data-kind="current" data-key="${key}" type="number" step="any" placeholder="—" />
+    </div>`).join('');
+}
+
+function valueOf(id) {
+  const v = $(id).value.trim();
+  return v === '' ? null : Number(v);
+}
+
+function collectMetrics(kind) {
+  const out = {};
+  document.querySelectorAll(`[data-kind="${kind}"]`).forEach(el => {
+    if (el.value.trim() !== '') out[el.dataset.key] = Number(el.value);
   });
-  const select = $('scenario');
-  data.scenarios.forEach((s, i) => {
-    const o = document.createElement('option');
-    o.value = i;
-    o.textContent = s.name;
-    select.appendChild(o);
-  });
-  select.value = data.scenarios.length - 1;
-  select.addEventListener('change', () => render(data.scenarios[+select.value], data.sources));
-  render(data.scenarios[+select.value], data.sources);
+  return out;
 }
 
-function pct(x) { return `${Math.round(x * 100)}%`; }
-function statusClass(s) { return s === 'TEST NOW' ? 'status-test' : s === 'WATCH' ? 'status-watch' : 'status-no'; }
-
-function render(s, sources) {
-  const d = s.decision;
-  $('status').textContent = d.status;
-  $('status').className = statusClass(d.status);
-  $('score').textContent = pct(d.priority);
-  $('scoreRing').style.setProperty('--score-angle', `${d.priority * 360}deg`);
-  $('subtitle').textContent = s.subtitle;
-  $('confidence').textContent = pct(d.confidence);
-  $('anomaly').textContent = pct(d.anomaly_score);
-  $('days').textContent = `${s.days_since_last_draw} days ago`;
-  $('recommendation').innerHTML = d.recommended_panel.length
-    ? `<strong>Suggested next panel:</strong> ${d.recommended_panel.join(' + ')}`
-    : `<strong>No immediate panel.</strong> Keep monitoring; retest only if the trajectory persists.`;
-  renderTimeline(s.timeline);
-  renderLabs(d.lab_predictions);
-  renderReasons(d.evidence);
-  renderSources(sources, d.evidence);
+function collectPayload() {
+  return {
+    baseline: collectMetrics('baseline'),
+    current: collectMetrics('current'),
+    persistence_days: Number($('persistence').value),
+    days_since_last_blood_test: valueOf('lastBlood'),
+    age: valueOf('age'),
+    sex: $('sex').value,
+    notes: $('notes').value.trim()
+  };
 }
 
-function renderTimeline(rows) {
-  const W = 720, H = 230, pad = {l: 34, r: 14, t: 18, b: 27};
-  const xs = rows.map((_, i) => pad.l + i * ((W - pad.l - pad.r) / (rows.length - 1)));
-  const metrics = [
-    {key:'rhr', cls:'line-rhr', min:50, max:78, point:'#1a2a21'},
-    {key:'hrv', cls:'line-hrv', min:25, max:75, point:'#6f756e'},
-    {key:'sleep', cls:'line-sleep', min:4.8, max:8.2, point:'#b8bdb5'}
-  ];
-  const y = (v, min, max) => pad.t + (max - v) / (max - min) * (H - pad.t - pad.b);
-  const path = (m) => rows.map((r, i) => `${i ? 'L' : 'M'} ${xs[i].toFixed(1)} ${y(r[m.key], m.min, m.max).toFixed(1)}`).join(' ');
-  let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">`;
-  [0,.25,.5,.75,1].forEach(t => {
-    const yy = pad.t + t * (H - pad.t - pad.b);
-    svg += `<line class="gridline" x1="${pad.l}" y1="${yy}" x2="${W-pad.r}" y2="${yy}"/>`;
-  });
-  metrics.forEach(m => {
-    svg += `<path d="${path(m)}" class="${m.cls}"/>`;
-    rows.forEach((r, i) => svg += `<circle class="point" fill="${m.point}" cx="${xs[i]}" cy="${y(r[m.key],m.min,m.max)}" r="3.6"/>`);
-  });
-  rows.forEach((r, i) => svg += `<text class="axis-label" x="${xs[i]}" y="${H-6}" text-anchor="middle">${r.day === 0 ? 'Today' : `${Math.abs(r.day)}d`}</text>`);
-  svg += `</svg>`;
-  $('timeline').innerHTML = svg;
+function loadExample() {
+  const values = {
+    b_resting_hr: 58, c_resting_hr: 69,
+    b_hrv: 56, c_hrv: 37,
+    b_sleep_hours: 7.5, c_sleep_hours: 5.9,
+    b_steps: 9200, c_steps: 5100,
+    b_temperature_c: 36.5, c_temperature_c: 37.1,
+    b_spo2: 98, c_spo2: 96,
+    b_respiratory_rate: 14, c_respiratory_rate: 17
+  };
+  for (const [id, value] of Object.entries(values)) $(id).value = value;
+  $('persistence').value = '3';
+  $('lastBlood').value = '150';
+  $('notes').value = 'Unusually fatigued for three days. No hard workout or travel. Resting heart rate remains elevated even overnight.';
 }
 
-function renderLabs(labs) {
-  $('labs').innerHTML = labs.slice().sort((a,b) => b.probability_changed - a.probability_changed).map(l => {
-    const value = l.predicted_value == null ? '' : `${l.predicted_value}${l.unit ? ' ' + l.unit : ''}`;
-    const previous = l.previous_value == null ? '' : `last ${l.previous_value}`;
-    return `<div class="lab-row">
-      <div><div class="lab-name">${l.lab}</div><div class="lab-meta">${l.domain}</div></div>
-      <div><div class="bar"><span style="width:${Math.round(l.probability_changed*100)}%"></span></div><div class="lab-meta">predicted ${value} · ${previous}</div></div>
-      <div class="lab-prob">${pct(l.probability_changed)} changed</div>
-    </div>`;
-  }).join('');
+function setLoading(on) {
+  $('analyzeBtn').disabled = on;
+  $('buttonText').textContent = on ? 'Analyzing wearable pattern…' : 'Analyze with Gemini';
+  $('spinner').classList.toggle('hidden', !on);
 }
 
-function renderReasons(evidence) {
-  const sorted = evidence.slice().sort((a,b) => b.weighted - a.weighted).slice(0,5);
-  $('reasons').innerHTML = sorted.map((e,i) => `<div class="reason"><div class="reason-icon">${i+1}</div><p><strong>${e.source}</strong><br>${e.reason}</p></div>`).join('');
+function recommendationLabel(value) {
+  return {
+    NO_TEST: 'NO TEST INDICATED BY THIS PATTERN',
+    WATCH: 'WATCH THE TREND',
+    CONSIDER_TESTING_SOON: 'CONSIDER BLOOD TESTING SOON'
+  }[value] || value;
 }
 
-function renderSources(sources, evidence) {
-  const eMap = Object.fromEntries(evidence.map(e => [e.source.toLowerCase(), e]));
-  $('sources').innerHTML = sources.map(s => {
-    let strength = null;
-    for (const [k,e] of Object.entries(eMap)) {
-      if (s.name.toLowerCase().includes(k.split(' ')[0]) || k.includes(s.name.toLowerCase().split(' ')[0])) strength = e.score;
-    }
-    return `<div class="source">
-      <div class="source-top"><strong>${s.name}</strong><span class="state ${s.public ? '' : 'restricted'}">${s.public ? 'public' : 'restricted'}</span></div>
-      <p>${s.role}</p>
-      <div class="modalities">${s.modalities.slice(0,4).join(' · ')}${s.modalities.length > 4 ? ' · …' : ''}</div>
-      ${strength == null ? '' : `<div class="lab-meta" style="margin-top:8px">current evidence ${pct(strength)}</div>`}
-    </div>`;
-  }).join('');
+function render(data) {
+  $('emptyState').classList.add('hidden');
+  $('resultView').classList.remove('hidden');
+  $('recommendation').textContent = recommendationLabel(data.recommendation);
+  $('recommendation').dataset.level = data.recommendation || '';
+  $('score').textContent = data.priority_score ?? '—';
+  $('headline').textContent = data.headline || '';
+  $('summary').textContent = data.summary || '';
+  $('modelUsed').textContent = data.model ? `Model: ${data.model}` : '';
+  $('generatedAt').textContent = data.generated_at ? new Date(data.generated_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+
+  const redFlag = $('redFlag');
+  redFlag.textContent = data.red_flag_notice || '';
+  redFlag.classList.toggle('hidden', !data.red_flag_notice);
+
+  $('reasons').innerHTML = (data.reasons || []).map(r => `
+    <div class="reason">
+      <div class="signal-name">${escapeHtml(r.signal)}</div>
+      <div><strong>${escapeHtml(r.observed_change)}</strong><p>${escapeHtml(r.interpretation)}</p></div>
+    </div>`).join('') || '<p class="muted">No strong signal was identified.</p>';
+
+  $('tests').innerHTML = (data.tests || []).map(t => `
+    <article class="test-item">
+      <div class="test-top"><h3>${escapeHtml(t.name)}</h3><span class="priority ${escapeHtml(t.priority)}">${escapeHtml(t.priority)}</span></div>
+      <p>${escapeHtml(t.rationale)}</p>
+    </article>`).join('') || '<div class="no-tests"><strong>No blood tests suggested.</strong><br>The model did not find enough wearable evidence to justify a focused panel right now.</div>';
+
+  $('nextStep').textContent = data.next_step || '';
+  $('uncertainty').innerHTML = (data.uncertainty || []).map(x => `<li>${escapeHtml(x)}</li>`).join('');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-boot().catch(err => {
-  document.body.innerHTML = `<pre style="padding:30px">Could not load demo_data.json\n${err}\n\nRun: python -m http.server 8080 -d frontend</pre>`;
-});
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+}
+
+async function analyze() {
+  $('error').classList.add('hidden');
+  const payload = collectPayload();
+  if (!Object.keys(payload.baseline).length && !Object.keys(payload.current).length) {
+    $('error').textContent = 'Enter at least one wearable metric, ideally both baseline and current.';
+    $('error').classList.remove('hidden');
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.setup ? `${data.error} ${data.setup}` : (data.detail || data.error || `HTTP ${res.status}`));
+    render(data);
+  } catch (err) {
+    $('error').textContent = err.message || String(err);
+    $('error').classList.remove('hidden');
+  } finally {
+    setLoading(false);
+  }
+}
+
+makeMetricRows();
+$('sampleBtn').addEventListener('click', loadExample);
+$('analyzeBtn').addEventListener('click', analyze);
