@@ -2,7 +2,7 @@ const tabs=[...document.querySelectorAll('[data-tab]')];
 const panels=[...document.querySelectorAll('[data-tab-panel]')];
 
 function activate(name,{updateHash=true}={}){
-  const valid=panels.some(p=>p.dataset.tabPanel===name)?name:'overview';
+  const valid=panels.some(p=>p.dataset.tabPanel===name)?name:'live';
   for(const tab of tabs){
     const active=tab.dataset.tab===valid;
     tab.classList.toggle('active',active);
@@ -21,5 +21,5 @@ document.addEventListener('click',e=>{
 });
 
 const initial=location.hash.replace('#','');
-activate(initial||'overview',{updateHash:false});
-window.addEventListener('hashchange',()=>activate(location.hash.replace('#','')||'overview',{updateHash:false}));
+activate(initial||'live',{updateHash:false});
+window.addEventListener('hashchange',()=>activate(location.hash.replace('#','')||'live',{updateHash:false}));
