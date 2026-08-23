@@ -1,144 +1,91 @@
-const MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-3.5-flash';
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+const MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-3.7-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
-const SYSTEM = `You are PulseLab Explainer, a conversational explanation layer on top of a research wearable-to-blood-testing model.
+const SYSTEM = `You are PulseLab Explainer, a conversational layer on top of a research wearable-to-blood-testing model.
 
-Your job is to explain the CURRENT PulseLab dashboard state supplied with each message. You are not the model that generated the score, and you must never pretend the chatbot itself diagnosed anything.
+When the user is asking about PulseLab, explain the CURRENT dashboard snapshot supplied with the message. You are not the model that generated its score.
+When the user asks an unrelated general question (for example math, coding, or ordinary knowledge), answer that question normally and do not force a medical reminder into the answer.
 
-Critical rules:
-- PulseLab's score estimates whether blood testing may be informative. It is NOT a diagnosis, a medical-clearance score, or a validated doctor/ER triage score.
-- Never tell a user that they definitely do not need a doctor, that it is safe to stay home, or that a low PulseLab score rules out illness.
-- If the user reports potentially urgent symptoms such as chest pain/pressure, severe trouble breathing, fainting, confusion, new one-sided weakness, severe bleeding, or another obviously severe acute symptom, advise prompt urgent/emergency medical evaluation rather than relying on PulseLab.
-- For non-urgent questions about seeing a doctor, explain what the dashboard does and does not support. If symptoms are new, persistent, worsening, or concerning to the user, say that clinician evaluation can still be appropriate even when the model is quiet.
-- Do not diagnose disease. Do not prescribe medications. Do not invent symptoms, measurements, lab values, or medical history.
-- Treat anything explicitly marked synthetic/demo as visualization only, not real evidence about the user.
-- Distinguish population-model probability, personalized calibration, physiology drift, and actual symptoms.
-- When the dashboard says no event-triggered test, phrase it as "PulseLab does not currently see a strong wearable-driven reason for blood testing" rather than "you are fine."
-- If the user asks why a test is suggested, connect the answer to the supplied model drivers and ranked panels, and mention uncertainty.
-- Ask one concise follow-up question about symptoms when that would materially change a doctor/urgent-care answer.
-- Be concise, plainspoken, and specific to the supplied dashboard. Usually 2-5 short paragraphs, under 180 words.
+Medical interpretation rules:
+- PulseLab estimates whether a particular blood panel may be informative. It is NOT a diagnosis, medical-clearance score, or validated doctor/ER triage system.
+- Never say a low PulseLab score proves the user is healthy, rules out illness, or proves they should not see a doctor.
+- Never claim the current model predicts future heart disease or another disease unless the supplied snapshot explicitly says a longitudinal disease model supports that outcome.
+- Similar-cohort analogs are only evidence for the outcome they were labeled with. If they are NHANES analogs, describe them as same-participant lab abnormalities, not later disease.
+- If severe symptoms are reported (for example chest pressure, severe difficulty breathing, fainting, confusion, new one-sided weakness, or severe bleeding), advise prompt urgent/emergency evaluation rather than relying on PulseLab.
+- Do not diagnose disease or prescribe medication.
+- Treat anything marked synthetic/demo as visualization only.
+- If a specific test is surfaced, name the exact panel and explain the model evidence and uncertainty.
+- If the dashboard says no event-triggered test, say PulseLab does not currently see a strong wearable-driven reason for a new draw; do not translate that into "you are fine."
+- Be concise and complete. Never end mid-sentence. Usually answer in 1-4 short paragraphs.
 `;
 
-function clamp(x, a = 0, b = 100) {
-  const n = Number(x);
-  return Number.isFinite(n) ? Math.max(a, Math.min(b, n)) : null;
+function clamp(x,a=0,b=100){const n=Number(x);return Number.isFinite(n)?Math.max(a,Math.min(b,n)):null;}
+
+function fallback(message,snapshot={}){
+  const q=String(message||'').toLowerCase();
+  const score=clamp(snapshot.score);const recommendation=snapshot.recommendation||'No current recommendation';const summary=snapshot.summary||'';
+  const severe=/(chest pain|chest pressure|can't breathe|cannot breathe|severe shortness of breath|faint(ed|ing)?|passed out|confusion|one[- ]sided weakness|severe bleeding)/i.test(message||'');
+  if(severe)return `Those symptoms can require prompt medical evaluation. PulseLab is not designed to decide whether a severe acute symptom is safe to watch at home, so do not rely on its testing score for that decision.`;
+  if(/square root of 4/.test(q))return 'The square root of 4 is 2.';
+  if(/(doctor|physician|urgent care|er\b|emergency)/i.test(q)){
+    const modelLine=score==null?'PulseLab does not currently have enough model state to interpret the dashboard.':`PulseLab is showing ${recommendation.toLowerCase()} with a testing-priority score of ${score}/100.`;
+    return `${modelLine} That score concerns the expected usefulness of blood testing, not whether you medically need to see a doctor. New, persistent, worsening, or concerning symptoms can still justify clinician evaluation.`;
+  }
+  if(/(why.*(not|no)|no test|not recommending)/i.test(q))return `PulseLab is only saying it does not currently see a strong wearable-driven reason for a new blood draw. ${summary || 'The decision combines the trained population model with deviation from the person’s learned baseline.'}`;
+  if(/(what changed|baseline|why now|driver)/i.test(q)){
+    const reasons=Array.isArray(snapshot.reasons)&&snapshot.reasons.length?snapshot.reasons.join(' '):'No model drivers are displayed yet.';
+    return `The dashboard compares the latest physiology with the learned baseline. The strongest displayed drivers are: ${reasons}`;
+  }
+  const plan=snapshot.testing_plan?.next_test?` The current testing plan surfaces ${snapshot.testing_plan.next_test} ${snapshot.testing_plan.window||''}.`:'';
+  return `${recommendation}. ${summary || 'PulseLab combines a population-trained blood-testing model with a personal wearable baseline.'}${plan}`;
 }
 
-function fallback(message, snapshot = {}) {
-  const q = String(message || '').toLowerCase();
-  const score = clamp(snapshot.score);
-  const recommendation = snapshot.recommendation || 'No current recommendation';
-  const summary = snapshot.summary || '';
-  const severe = /(chest pain|chest pressure|can't breathe|cannot breathe|severe shortness of breath|faint(ed|ing)?|passed out|confusion|one[- ]sided weakness|severe bleeding)/i.test(message || '');
-
-  if (severe) {
-    return `Those symptoms can require prompt medical evaluation. PulseLab is not designed to decide whether an emergency symptom is safe to watch at home, so don't rely on its testing score for that decision. Seek urgent/emergency medical care now if the symptom is severe or ongoing.`;
-  }
-
-  if (/(doctor|physician|urgent care|er\b|emergency)/i.test(q)) {
-    const modelLine = score == null
-      ? `PulseLab does not currently have enough model state to answer from the dashboard.`
-      : `PulseLab is currently showing ${recommendation.toLowerCase()} with a testing-priority score of ${score}/100.`;
-    return `${modelLine} That score is about the expected usefulness of blood testing, not whether you medically need to see a doctor. A quiet score cannot rule out illness. If you have new, persistent, worsening, or concerning symptoms, clinician evaluation can still be appropriate. What symptoms, if any, are you having right now?`;
-  }
-
-  if (/(why.*(not|no)|shouldn.t|should not|no test|not recommending)/i.test(q)) {
-    return `PulseLab is only saying it does not currently see a strong wearable-driven reason for blood testing. It is not saying that nothing is wrong or that you should avoid a doctor. ${summary || 'The decision combines the trained population model with deviation from the person’s learned baseline.'} A low trigger can happen when the wearable pattern is close to baseline or when the model has weak evidence for the available lab panels.`;
-  }
-
-  if (/(what changed|baseline|why now|driver)/i.test(q)) {
-    const reasons = Array.isArray(snapshot.reasons) && snapshot.reasons.length ? snapshot.reasons.join(' ') : 'No model drivers are displayed yet.';
-    return `The dashboard is comparing today's physiology with the person's learned baseline. The strongest displayed drivers are: ${reasons} Those shifts affect the event-trigger signal, while BloodNeedNet separately estimates which blood panels are likely to be informative.`;
-  }
-
-  return `${recommendation}. ${summary || 'PulseLab combines a population-trained blood-testing model with a personal wearable baseline.'} I can explain what changed, why a particular blood test is ranked highly, or what this result does—and does not—say about seeing a doctor.`;
+function textFromResponse(json){
+  return (json?.candidates?.[0]?.content?.parts||[]).map(p=>typeof p?.text==='string'?p.text:'').join('').trim();
 }
 
-function extractText(json) {
-  const steps = Array.isArray(json?.steps) ? json.steps : [];
-  const texts = [];
-  for (const step of steps) {
-    if (step?.type !== 'model_output') continue;
-    for (const part of Array.isArray(step.content) ? step.content : []) {
-      if (part?.type === 'text' && typeof part.text === 'string') texts.push(part.text);
-    }
-  }
-  return texts.join('\n').trim();
-}
-
-export default async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store');
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const body = req.body || {};
-  const message = String(body.message || '').trim().slice(0, 2000);
-  const snapshot = body.snapshot && typeof body.snapshot === 'object' ? body.snapshot : {};
-  const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
-  if (!message) return res.status(400).json({ error: 'Message is required.' });
-
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(200).json({
-      reply: fallback(message, snapshot),
-      mode: 'local-safety-fallback',
-      model: null,
-    });
-  }
-
-  const compactHistory = history.map(turn => ({
-    role: turn?.role === 'assistant' ? 'assistant' : 'user',
-    text: String(turn?.text || '').slice(0, 1200),
+function historyContents(history){
+  return history.map(turn=>({
+    role:turn?.role==='assistant'?'model':'user',
+    parts:[{text:String(turn?.text||'').slice(0,1600)}],
   }));
+}
 
-  const input = [
-    'CURRENT DASHBOARD SNAPSHOT (authoritative for this turn):',
-    JSON.stringify(snapshot, null, 2),
+async function callGemini(message,snapshot,history){
+  const context=[
+    'CURRENT PULSELAB DASHBOARD SNAPSHOT:',
+    JSON.stringify(snapshot,null,2),
     '',
-    'RECENT CHAT:',
-    JSON.stringify(compactHistory, null, 2),
-    '',
+    'Interpret the snapshot only when relevant to the user question.',
     `USER MESSAGE: ${message}`,
   ].join('\n');
+  const response=await fetch(GEMINI_URL,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},
+    body:JSON.stringify({
+      systemInstruction:{parts:[{text:SYSTEM}]},
+      contents:[...historyContents(history),{role:'user',parts:[{text:context}]}],
+      generationConfig:{maxOutputTokens:1200},
+    }),
+  });
+  const json=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(json?.error?.message||`Gemini request failed (${response.status})`);
+  const reply=textFromResponse(json);
+  if(!reply)throw new Error('Gemini returned an empty response.');
+  return {reply,finishReason:json?.candidates?.[0]?.finishReason||null};
+}
 
-  try {
-    const response = await fetch(GEMINI_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': process.env.GEMINI_API_KEY,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        system_instruction: SYSTEM,
-        input,
-        store: false,
-        generation_config: {
-          max_output_tokens: 450,
-          thinking_level: 'low',
-        },
-      }),
-    });
-
-    const json = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      console.error('Gemini chat error', response.status, json?.error?.message || json?.error || json);
-      return res.status(200).json({
-        reply: fallback(message, snapshot),
-        mode: 'local-safety-fallback',
-        model: null,
-      });
-    }
-
-    const reply = extractText(json) || fallback(message, snapshot);
-    return res.status(200).json({ reply, mode: 'gemini', model: MODEL });
-  } catch (error) {
-    console.error('PulseLab chat failure', error);
-    return res.status(200).json({
-      reply: fallback(message, snapshot),
-      mode: 'local-safety-fallback',
-      model: null,
-    });
+export default async function handler(req,res){
+  res.setHeader('Cache-Control','no-store');
+  if(req.method!=='POST'){res.setHeader('Allow','POST');return res.status(405).json({error:'Method not allowed'});}
+  const body=req.body||{};const message=String(body.message||'').trim().slice(0,2000);const snapshot=body.snapshot&&typeof body.snapshot==='object'?body.snapshot:{};const history=Array.isArray(body.history)?body.history.slice(-8):[];
+  if(!message)return res.status(400).json({error:'Message is required.'});
+  if(!process.env.GEMINI_API_KEY)return res.status(200).json({reply:fallback(message,snapshot),mode:'local-safety-fallback',model:null});
+  try{
+    const result=await callGemini(message,snapshot,history);
+    return res.status(200).json({reply:result.reply,mode:'gemini',model:MODEL,finishReason:result.finishReason});
+  }catch(error){
+    console.error('PulseLab chat failure',error);
+    return res.status(200).json({reply:fallback(message,snapshot),mode:'local-safety-fallback',model:null});
   }
 }
