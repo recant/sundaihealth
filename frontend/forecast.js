@@ -10,117 +10,17 @@ function fmtDate(d){return d.toLocaleDateString([], {month:'short',day:'numeric'
 function monthName(d){return d.toLocaleDateString([], {month:'long',year:'numeric'});}
 function cadence(days){const opts=[3,7,14,21,30,45,60,90];return opts.reduce((best,x)=>Math.abs(x-days)<Math.abs(best-days)?x:best,opts[0]);}
 function windowText(days){if(days<=3)return'within 72 hours';if(days<=7)return'within 7 days';if(days<=14)return'within 2 weeks';if(days<=21)return'within 3 weeks';if(days<=30)return'in about 1 month';if(days<=60)return`in about ${Math.round(days/7)} weeks`;return`in about ${Math.round(days/30)} months`;}
-
-function ensureStyles(){
-  if(document.querySelector('link[data-pulselab-forecast]'))return;
-  const link=document.createElement('link');link.rel='stylesheet';link.href='./forecast.css';link.dataset.pulselabForecast='1';document.head.appendChild(link);
-}
-
-function buildCard(){
-  const target=$('testingContent');
-  if(!target||$('forecastCard'))return;
-  const card=document.createElement('section');card.id='forecastCard';card.className='card forecast-card';
-  card.innerHTML=`
-    <div class="forecast-top"><div><div class="eyebrow">Longitudinal plan</div><h2>When should you test again?</h2></div><span class="forecast-badge">MODEL + SIMILAR PEOPLE</span></div>
-    <div class="next-test"><div class="next-test-label">Next test to consider</div><div class="next-test-row"><h3 id="nextTestName">Waiting for model state</h3><div id="nextTestWindow" class="next-test-window">—</div></div><p id="nextTestReason">PulseLab combines current physiology, persistence, prior testing, and panel ranking.</p></div>
-    <div id="similarityBasis" class="forecast-note">Population matching will appear after the cohort comparison loads.</div>
-    <div class="testing-section"><div class="eyebrow">If today's pattern persists</div><div id="projection" class="projection"></div></div>
-    <div class="testing-section"><div class="calendar-head"><div><div class="eyebrow">Calendar</div><h3>Past draws + suggested window</h3></div><span id="calendarLabel">Demo history is labeled.</span></div><div id="calendarGrid" class="calendar-grid"></div><div id="calendarEvents" class="calendar-events"></div></div>
-    <div class="forecast-note">Research testing-yield forecast, not a diagnosis or a validated prediction that disease will occur. Similarity changes the suggested measurement cadence, but a synthetic demo trajectory never counts as an observed medical outcome.</div>`;
-  target.appendChild(card);
-}
-
-function parsePanels(){
-  return [...document.querySelectorAll('#panelBars .bar-row')].map(row=>({
-    label:row.querySelector('span')?.textContent?.trim()||'',
-    p:Number((row.querySelector('b')?.textContent||'').replace('%',''))||0
-  })).filter(x=>x.label).sort((a,b)=>b.p-a.p);
-}
-function readAnalogRecommendation(){
-  try{
-    const x=JSON.parse(localStorage.getItem(ANALOG_KEY)||'null');
-    if(!x||!Number.isFinite(Number(x.days)))return null;
-    return {...x,days:clamp(Number(x.days),3,90),similarity:Number(x.similarity)||null};
-  }catch(_){return null;}
-}
-function modelTiming(score){
-  if(score>=75)return 3;
-  if(score>=62)return 7;
-  if(score>=45)return 14;
-  return 30;
-}
-function recommendation(){
-  const score=Number(($('score')?.textContent||'').trim());
-  const safe=Number.isFinite(score)?score:0;
-  const top=parsePanels()[0]||{label:'focused blood panel',p:0};
-  const analog=readAnalogRecommendation();
-  const baseDays=modelTiming(safe);
-  let days=baseDays;
-  if(analog){
-    days=safe>=45?cadence(baseDays*.55+analog.days*.45):cadence(Math.max(baseDays,analog.days));
-  }
-  const persistence=Number(num('persistence')||1);
-  const analogPhrase=analog
-    ? ` The nearest-cohort estimate suggests ${windowText(analog.days)}${analog.panel?` and most often points to ${analog.panel}`:''}${analog.similarity?` (${Math.round(analog.similarity)}% closest-match similarity)`:''}.`
-    : '';
-  const reason=safe>=45
-    ? `${top.label} is the highest-ranked current panel (${Math.round(top.p)}%). Testing priority is ${Math.round(safe)}/100 and this pattern has persisted for ${persistence} day${persistence===1?'':'s'}.${analogPhrase}`
-    : `No strong event-triggered draw right now. If the signal strengthens, ${top.label} is currently the highest-ranked panel (${Math.round(top.p)}%).${analogPhrase}`;
-  return {score:safe,top,days,window:windowText(days),reason,date:addDays(new Date(),days),analog};
-}
-
+function ensureStyles(){if(document.querySelector('link[data-pulselab-forecast]'))return;const link=document.createElement('link');link.rel='stylesheet';link.href='./forecast.css';link.dataset.pulselabForecast='1';document.head.appendChild(link);}
+function buildCard(){const target=$('testingContent');if(!target||$('forecastCard'))return;const card=document.createElement('section');card.id='forecastCard';card.className='card forecast-card';card.innerHTML=`<div class="forecast-top"><div><div class="eyebrow">Testing plan</div><h2>When should you measure again?</h2></div><span class="forecast-badge">MODEL + REAL STUDY NETWORK</span></div><div class="next-test"><div class="next-test-label">Next test to consider</div><div class="next-test-row"><h3 id="nextTestName">Waiting for model state</h3><div id="nextTestWindow" class="next-test-window">—</div></div><p id="nextTestReason">PulseLab combines today’s wearable changes, how long they have lasted, prior testing, and the real-participant comparison network.</p></div><div id="similarityBasis" class="forecast-note">Open Population to compare today with real people from published studies.</div><div class="testing-section"><div class="eyebrow">If today's pattern persists</div><div id="projection" class="projection"></div></div><div class="testing-section"><div class="calendar-head"><div><div class="eyebrow">Calendar</div><h3>Past draws + suggested window</h3></div><span id="calendarLabel">Demo history is labeled.</span></div><div id="calendarGrid" class="calendar-grid"></div><div id="calendarEvents" class="calendar-events"></div></div><div class="forecast-note">Research demo only. The published participant outcomes are real; PulseLab’s match score and suggested timing are not validated medical risk predictions.</div>`;target.appendChild(card);}
+function parsePanels(){return [...document.querySelectorAll('#panelBars .bar-row')].map(row=>({label:row.querySelector('span')?.textContent?.trim()||'',p:Number((row.querySelector('b')?.textContent||'').replace('%',''))||0})).filter(x=>x.label).sort((a,b)=>b.p-a.p);}
+function readAnalogRecommendation(){try{const x=JSON.parse(localStorage.getItem(ANALOG_KEY)||'null');if(!x||!Number.isFinite(Number(x.days)))return null;return {...x,days:clamp(Number(x.days),3,90),similarity:Number(x.similarity)||null};}catch(_){return null;}}
+function modelTiming(score){if(score>=75)return 3;if(score>=62)return 7;if(score>=45)return 14;return 30;}
+function recommendation(){const score=Number(($('score')?.textContent||'').trim());const safe=Number.isFinite(score)?score:0;const top=parsePanels()[0]||{label:'focused blood panel',p:0};const analog=readAnalogRecommendation();const baseDays=modelTiming(safe);let days=baseDays;if(analog)days=safe>=45?cadence(baseDays*.65+analog.days*.35):cadence(Math.max(baseDays,analog.days));const persistence=Number(num('persistence')||1);const analogPhrase=analog?` The Population network currently places this pattern near real published participants; its demo timing suggests ${windowText(analog.days)}${analog.similarity?` (closest displayed match ${Math.round(analog.similarity)}%)`:''}.`:'';const reason=safe>=45?`${top.label} is the highest-ranked current panel (${Math.round(top.p)}%). Testing priority is ${Math.round(safe)}/100 and this pattern has persisted for ${persistence} day${persistence===1?'':'s'}.${analogPhrase}`:`No strong event-triggered draw right now. If the signal strengthens, ${top.label} is currently the highest-ranked panel (${Math.round(top.p)}%).${analogPhrase}`;return {score:safe,top,days,window:windowText(days),reason,date:addDays(new Date(),days),analog};}
 function persistenceBoost(days){return clamp((Math.max(1,Math.min(7,days))-1)/6,0,1)*8;}
-function renderProjection(rec){
-  const p=Number(num('persistence')||1),base=rec.score-persistenceBoost(p);
-  const scenarios=[['Now',p],['+3 days',Math.min(7,p+3)],['+7 days',7]];
-  $('projection').innerHTML=scenarios.map(([label,days])=>`<div class="projection-item"><span>${label}</span><strong>${Math.round(clamp(base+persistenceBoost(days)))}/100</strong><small>if the same pattern persists</small></div>`).join('');
-}
-
-function readLabHistory(){
-  try{
-    const profile=JSON.parse(localStorage.getItem('pulselab-personal-profile-v1')||'null');
-    const real=(profile?.lab_feedback||[]).map(x=>({date:new Date(x.at),name:(x.panel||'panel').replaceAll('_',' '),result:x.outcome?'abnormal':'normal',synthetic:false})).filter(x=>Number.isFinite(x.date.getTime()));
-    if(real.length)return real.slice(-6);
-  }catch(_){ }
-  const now=new Date();
-  return [
-    {date:addDays(now,-94),name:'CBC',result:'normal',synthetic:true},
-    {date:addDays(now,-63),name:'CMP',result:'normal',synthetic:true},
-    {date:addDays(now,-31),name:'Hemoglobin A1c',result:'normal',synthetic:true},
-  ];
-}
-
-function renderMonth(monthDate,events,recommendedDate){
-  const y=monthDate.getFullYear(),m=monthDate.getMonth(),first=new Date(y,m,1),last=new Date(y,m+1,0);
-  const days=[];for(let i=0;i<first.getDay();i++)days.push('<span class="day blank">0</span>');
-  const today=dateKey(new Date()),rec=dateKey(recommendedDate),eventKeys=new Set(events.map(e=>dateKey(e.date)));
-  for(let d=1;d<=last.getDate();d++){
-    const key=dateKey(new Date(y,m,d)),classes=['day'];if(key===today)classes.push('today');if(eventKeys.has(key))classes.push('tested');if(key===rec)classes.push('recommended');
-    days.push(`<span class="${classes.join(' ')}">${d}</span>`);
-  }
-  return `<div class="month"><div class="month-title">${monthName(monthDate)}</div><div class="weekdays"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div><div class="days">${days.join('')}</div></div>`;
-}
-
-function renderCalendar(rec){
-  const events=readLabHistory(),now=new Date();
-  const months=[-2,-1,0,1].map(o=>new Date(now.getFullYear(),now.getMonth()+o,1));
-  $('calendarGrid').innerHTML=months.map(m=>renderMonth(m,events,rec.date)).join('');
-  const rows=[...events.sort((a,b)=>a.date-b.date),{date:rec.date,name:rec.top.label,result:rec.score>=45?'suggested':'recheck',recommended:true}];
-  $('calendarEvents').innerHTML=rows.map(e=>`<div class="calendar-event ${e.synthetic?'synthetic':''}"><span class="date">${fmtDate(e.date)}</span><b>${e.name}${e.synthetic?' · DEMO':''}</b><span class="result">${e.result}</span></div>`).join('');
-}
-
-function renderForecast(){
-  if(!$('forecastCard'))return;
-  const rec=recommendation(),sig=[rec.score,rec.top.label,rec.top.p,num('persistence'),$('profileLabs')?.textContent,rec.analog?.days,rec.analog?.panel,rec.analog?.similarity].join('|');
-  if(sig===lastSignature)return;lastSignature=sig;
-  $('nextTestName').textContent=rec.score>=45?rec.top.label:`No test yet · ${rec.top.label} ranks highest`;
-  $('nextTestWindow').textContent=`${rec.window} · ${fmtDate(rec.date)}`;
-  $('nextTestReason').textContent=rec.reason;
-  $('similarityBasis').textContent=rec.analog
-    ? `Similarity-informed timing: the five nearest study-space analogs suggest ${windowText(rec.analog.days)}; PulseLab blends that cadence with today's BloodNeedNet score. ${rec.analog.synthetic?'Their displayed future trajectories are synthetic demo follow-ups and are not treated as observed NHANES outcomes.':'Only observed fields are used where available.'}`
-    : 'Similarity-informed timing will appear after the Population tab computes your nearest study-space analogs.';
-  renderProjection(rec);renderCalendar(rec);
-}
-
+function renderProjection(rec){const p=Number(num('persistence')||1),base=rec.score-persistenceBoost(p);const scenarios=[['Now',p],['+3 days',Math.min(7,p+3)],['+7 days',7]];$('projection').innerHTML=scenarios.map(([label,days])=>`<div class="projection-item"><span>${label}</span><strong>${Math.round(clamp(base+persistenceBoost(days)))}/100</strong><small>if the same pattern persists</small></div>`).join('');}
+function readLabHistory(){try{const profile=JSON.parse(localStorage.getItem('pulselab-personal-profile-v1')||'null');const real=(profile?.lab_feedback||[]).map(x=>({date:new Date(x.at),name:(x.panel||'panel').replaceAll('_',' '),result:x.outcome?'abnormal':'normal',synthetic:false})).filter(x=>Number.isFinite(x.date.getTime()));if(real.length)return real.slice(-6);}catch(_){ }const now=new Date();return [{date:addDays(now,-94),name:'CBC',result:'normal',synthetic:true},{date:addDays(now,-63),name:'CMP',result:'normal',synthetic:true},{date:addDays(now,-31),name:'Hemoglobin A1c',result:'normal',synthetic:true}];}
+function renderMonth(monthDate,events,recommendedDate){const y=monthDate.getFullYear(),m=monthDate.getMonth(),first=new Date(y,m,1),last=new Date(y,m+1,0);const days=[];for(let i=0;i<first.getDay();i++)days.push('<span class="day blank">0</span>');const today=dateKey(new Date()),rec=dateKey(recommendedDate),eventKeys=new Set(events.map(e=>dateKey(e.date)));for(let d=1;d<=last.getDate();d++){const key=dateKey(new Date(y,m,d)),classes=['day'];if(key===today)classes.push('today');if(eventKeys.has(key))classes.push('tested');if(key===rec)classes.push('recommended');days.push(`<span class="${classes.join(' ')}">${d}</span>`);}return `<div class="month"><div class="month-title">${monthName(monthDate)}</div><div class="weekdays"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div><div class="days">${days.join('')}</div></div>`;}
+function renderCalendar(rec){const events=readLabHistory(),now=new Date();const months=[-2,-1,0,1].map(o=>new Date(now.getFullYear(),now.getMonth()+o,1));$('calendarGrid').innerHTML=months.map(m=>renderMonth(m,events,rec.date)).join('');const rows=[...events.sort((a,b)=>a.date-b.date),{date:rec.date,name:rec.top.label,result:rec.score>=45?'suggested':'recheck',recommended:true}];$('calendarEvents').innerHTML=rows.map(e=>`<div class="calendar-event ${e.synthetic?'synthetic':''}"><span class="date">${fmtDate(e.date)}</span><b>${e.name}${e.synthetic?' · DEMO':''}</b><span class="result">${e.result}</span></div>`).join('');}
+function renderForecast(){if(!$('forecastCard'))return;const rec=recommendation(),sig=[rec.score,rec.top.label,rec.top.p,num('persistence'),$('profileLabs')?.textContent,rec.analog?.days,rec.analog?.panel,rec.analog?.similarity,rec.analog?.source].join('|');if(sig===lastSignature)return;lastSignature=sig;$('nextTestName').textContent=rec.score>=45?rec.top.label:`No test yet · ${rec.top.label} ranks highest`;$('nextTestWindow').textContent=`${rec.window} · ${fmtDate(rec.date)}`;$('nextTestReason').textContent=rec.reason;$('similarityBasis').textContent=rec.analog?`Real-study network: the current Population view puts today near published participant cases and suggests rechecking ${windowText(rec.analog.days)}. The participant histories are real; the match percentage and timing are PulseLab demo calculations.`:'Open Population to build the real-participant comparison network.';renderProjection(rec);renderCalendar(rec);}
 function boot(){ensureStyles();buildCard();renderForecast();document.addEventListener('input',()=>setTimeout(renderForecast,180));document.addEventListener('change',()=>setTimeout(renderForecast,180));window.addEventListener('pulselab:analog-recommendation',()=>{lastSignature='';renderForecast();});window.addEventListener('pulselab:tab',e=>{if(e.detail?.tab==='testing'){lastSignature='';renderForecast();}});setInterval(renderForecast,1400);}
 boot();

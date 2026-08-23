@@ -1,222 +1,67 @@
 const $ = id => document.getElementById(id);
 const clamp = (x,a=0,b=1) => Math.max(a,Math.min(b,x));
-const STUDY_URL = 'https://doi.org/10.1038/s41551-020-00640-6';
-const STUDY_NAME = 'Mishra et al. · Nature Biomedical Engineering · 2020';
 const STORAGE_KEY = 'pulselab-analog-rec-v1';
 
-const CASES = [
-  {
-    id:'AQC0L71',
-    bump:2,
-    short:'Heart-rate warnings came first. The person later worsened, tested positive for COVID-19, and was hospitalized.',
-    warning:'Both heart-rate methods in the paper flagged this person before the illness became severe.',
-    timeline:[
-      ['Before symptoms','Wearable heart-rate warnings appeared.'],
-      ['Symptoms begin','Cough, fatigue, aches and pains were reported.'],
-      ['Over the next 22 days','Symptoms stayed mild to moderate, then got worse quickly. Temperature rose and a COVID-19 test was positive.'],
-      ['5 days later','The participant was admitted to the hospital.'],
-      ['Day 41','The participant had recovered.']
-    ],
-    outcome:'Hospitalized · 41 days to recovery',
-    temp:true
+const STUDIES = {
+  covid: {
+    name:'Stanford COVID smartwatch study',
+    short:'COVID',
+    citation:'Mishra et al. · Nature Biomedical Engineering · 2020',
+    url:'https://doi.org/10.1038/s41551-020-00640-6'
   },
-  {
-    id:'APGIB2T',
-    bump:0,
-    short:'A heart-rate warning appeared about a week before symptoms. The illness became severe and later relapsed.',
-    warning:'The paper reports an early heart-rate signal 1 week before symptom onset.',
-    timeline:[
-      ['7 days before symptoms','An early heart-rate warning appeared.'],
-      ['Symptoms begin','The illness quickly progressed with severe diarrhea, fatigue, headaches and elevated temperature. COVID-19 was positive.'],
-      ['First 18 days','The initial illness lasted 18 days.'],
-      ['Next 12 days','The participant felt recovered.'],
-      ['After that','Symptoms relapsed with elevated temperature, fatigue, diarrhea and another rise in heart-rate signals.']
-    ],
-    outcome:'18-day illness · recovery · relapse',
-    temp:true
+  digital: {
+    name:'Stanford digital-health study',
+    short:'INFECTION / INFLAMMATION',
+    citation:'Li et al. · PLOS Biology · 2017',
+    url:'https://doi.org/10.1371/journal.pbio.2001402'
   },
-  {
-    id:'A1K5DRI',
-    bump:-2,
-    short:'A heart-rate warning came 3 days before symptom tracking. The illness lasted 23 days.',
-    warning:'The paper reports a heart-rate alarm 3 days before the participant began daily symptom logs.',
-    timeline:[
-      ['3 days before symptoms','A heart-rate warning appeared.'],
-      ['Symptoms begin','Daily symptom tracking started.'],
-      ['During illness','Temperature rose quickly, with severe fatigue, aches and pains.'],
-      ['Day 23','The reported illness period ended after a slow recovery.']
-    ],
-    outcome:'23-day illness',
-    temp:true
-  },
-  {
-    id:'A0VFT1N',
-    bump:-4,
-    short:'A heart-rate warning led the illness. The person later had chest pain and was hospitalized for shortness of breath.',
-    warning:'The paper reports that a heart-rate alarm came before this participant’s 13-day COVID-19 illness.',
-    timeline:[
-      ['Before symptoms','A heart-rate warning appeared.'],
-      ['First 13 days','COVID-19 illness was reported, followed by fatigue and occasional chest pain.'],
-      ['Later','Shortness of breath returned along with new heart-rate warnings.'],
-      ['Day 35','The participant was hospitalized for shortness of breath.']
-    ],
-    outcome:'Hospitalized on day 35',
-    temp:false
+  wesad: {
+    name:'WESAD wearable stress study',
+    short:'STRESS',
+    citation:'Schmidt et al. · ICMI · 2018',
+    url:'https://doi.org/10.24432/C57K5T'
   }
+};
+
+const CASES = [
+  {id:'AQC0L71',study:'covid',angle:-78,signals:['hr','temp','activity','sleep'],kind:'COVID-19',outcome:'Hospitalized · recovered 41 days after symptoms began',summary:'Heart-rate warnings appeared before the illness became severe. The participant later worsened, tested positive, and was hospitalized.',timeline:[['Before symptoms','Two heart-rate methods in the paper produced warnings.'],['Symptoms begin','Cough, fatigue, aches and pains were reported.'],['Next 22 days','Symptoms stayed mild to moderate, then worsened quickly. Temperature rose and the COVID-19 test was positive.'],['5 days later','The participant was admitted to the hospital.'],['Day 41','The participant had recovered.']],realNumbers:[{label:'Reported illness length',value:41,max:45,suffix:' days'}]},
+  {id:'APGIB2T',study:'covid',angle:-35,signals:['hr','temp','activity','sleep'],kind:'COVID-19',outcome:'18-day illness · 12-day recovery · then relapse',summary:'A heart-rate warning appeared about a week before symptoms. The illness became severe and later relapsed.',timeline:[['7 days before symptoms','An early resting-heart-rate warning appeared.'],['Symptoms begin','Severe diarrhea, fatigue, headaches and elevated temperature were reported; COVID-19 was positive.'],['First 18 days','The initial illness lasted 18 days.'],['Next 12 days','The participant felt recovered.'],['After that','Symptoms relapsed with elevated temperature, fatigue, diarrhea and new heart-rate warnings.']],realNumbers:[{label:'Warning lead time',value:7,max:10,suffix:' days'},{label:'Initial illness',value:18,max:25,suffix:' days'}]},
+  {id:'A1K5DRI',study:'covid',angle:4,signals:['hr','temp','activity','sleep'],kind:'COVID-19',outcome:'23-day illness',summary:'A heart-rate warning came 3 days before daily symptom tracking. The illness lasted 23 days.',timeline:[['3 days before symptoms','A resting-heart-rate warning appeared.'],['Symptoms begin','Daily symptom tracking started.'],['During illness','Temperature rose quickly, with severe fatigue, aches and pains.'],['Day 23','The reported illness period ended after a slow recovery.']],realNumbers:[{label:'Warning lead time',value:3,max:10,suffix:' days'},{label:'Illness length',value:23,max:25,suffix:' days'}]},
+  {id:'A0VFT1N',study:'covid',angle:39,signals:['hr','activity','sleep','resp'],kind:'COVID-19',outcome:'Hospitalized for shortness of breath on day 35',summary:'A heart-rate warning led a 13-day COVID-19 illness. Shortness of breath later returned and the participant was hospitalized.',timeline:[['Before symptoms','A resting-heart-rate warning appeared.'],['First 13 days','COVID-19 illness was reported, followed by fatigue and occasional chest pain.'],['Later','Shortness of breath returned together with new heart-rate warnings.'],['Day 35','The participant was hospitalized for shortness of breath.']],realNumbers:[{label:'Initial illness',value:13,max:40,suffix:' days'},{label:'Hospitalized on day',value:35,max:40,suffix:''}]},
+  {id:'Participant #1',study:'digital',angle:83,signals:['hr','temp','spo2'],kind:'Lyme disease',outcome:'Lyme disease confirmed by blood test; abnormal signs improved after treatment',summary:'Wearable heart rate and skin temperature rose, blood oxygen was unusually low, and later testing confirmed Lyme disease.',timeline:[['Day 458','The participant had been in rural Massachusetts, where tick exposure was possible.'],['Day 470','Abnormally high heart rate and skin temperature appeared; SpO₂ was also unusually low.'],['Days 470–474','About 14–55% of daily heart-rate reads and 5–19% of skin-temperature reads were outliers. Oral temperature stayed about 98.9–102 °F.'],['Day 474','The participant saw a physician and received doxycycline. Symptoms and abnormal vital signs disappeared the next day.'],['Day 487','A Lyme antibody blood test was positive.']],realNumbers:[{label:'Heart-rate reads flagged',value:55,max:60,suffix:'% max',note:'14–55% per day during days 470–474'},{label:'Skin-temp reads flagged',value:19,max:60,suffix:'% max',note:'5–19% per day during days 470–474'},{label:'Highest oral temperature',value:102,max:105,suffix:' °F'}]},
+  {id:'Participant #59',study:'digital',angle:126,signals:['hr','temp'],kind:'Inflammatory illness',outcome:'Heart-rate change appeared 48–72 hours before symptoms',summary:'This participant had one of the clearest pre-symptom heart-rate changes in the 2017 Stanford study.',timeline:[['48–72 h before symptoms','Heart rate was 3.55 standard deviations above that participant’s background.'],['48 h before symptoms','Skin temperature was 2.45 standard deviations above background.'],['Symptom day','Skin temperature was 2.15 standard deviations above background.'],['Across measurements','Heart-rate outlier burden and CRP were strongly correlated in this participant.']],realNumbers:[{label:'Heart rate before symptoms',value:3.55,max:5,suffix:' SD'},{label:'Skin temp 48 h before',value:2.45,max:5,suffix:' SD'},{label:'Skin temp on symptom day',value:2.15,max:5,suffix:' SD'}]},
+  {id:'Participant #58',study:'digital',angle:164,signals:['hr'],kind:'Inflammatory illness',outcome:'Two illness days ranked in the top 5% of heart-rate outliers',summary:'Two illness days had unusually high heart-rate outlier scores, and heart-rate burden tracked CRP closely.',timeline:[['Illness episode 1','The heart-rate day was 3.40 standard deviations above background.'],['Illness episode 2','A second illness day was 2.02 standard deviations above background.'],['Across blood tests','The paper reports a Pearson correlation of 0.90 between CRP and the share of high heart-rate readings.']],realNumbers:[{label:'Illness day 1',value:3.40,max:5,suffix:' SD'},{label:'Illness day 2',value:2.02,max:5,suffix:' SD'},{label:'HR–CRP correlation',value:.90,max:1,suffix:' r'}]},
+  {id:'Participant #37',study:'digital',angle:203,signals:['hr'],kind:'Inflammatory illness',outcome:'Illness period was the strongest heart-rate outlier in 25 monitored days',summary:'The participant’s illness period was the strongest heart-rate outlier in their monitoring window.',timeline:[['Illness period','The heart-rate outlier measure was 4.66 standard deviations above background.'],['Rank','It ranked #1 out of 25 monitored days for the fraction of high heart-rate readings.']],realNumbers:[{label:'Heart-rate outlier',value:4.66,max:5,suffix:' SD'}]},
+  {id:'S2',study:'wesad',angle:235,signals:['hr','temp','resp'],kind:'Experimentally induced stress',outcome:'Real labeled stress recording — not an illness case',summary:'S2 is a real WESAD participant recorded during neutral baseline, stress, amusement and recovery-style conditions.',timeline:[['Baseline','The participant spent 20 minutes in a neutral reading condition.'],['Stress task','The Trier Social Stress Test used public speaking and mental arithmetic to induce acute stress.'],['Other labeled periods','The same recording also contains amusement and other protocol periods.'],['Why it is here','This gives PulseLab a real example of a strong wearable change that is not infection.']]},
+  {id:'S3',study:'wesad',angle:266,signals:['hr','temp','resp'],kind:'Experimentally induced stress',outcome:'Real labeled stress recording — not an illness case',summary:'S3 is another real WESAD subject with synchronized chest and wrist sensor recordings across labeled stress states.',timeline:[['Baseline','Neutral reading established a resting comparison period.'],['Stress task','Public speaking and mental arithmetic were used to create acute stress.'],['Sensors','The dataset includes ECG/BVP, respiration, skin temperature, motion and electrodermal activity.']]},
+  {id:'S4',study:'wesad',angle:298,signals:['hr','temp','resp'],kind:'Experimentally induced stress',outcome:'Real labeled stress recording — not an illness case',summary:'S4 shows why a wearable warning by itself should not be treated as a diagnosis: stress can also move physiology.',timeline:[['Baseline','A neutral baseline period was recorded.'],['Stress task','The participant completed the same standardized social-stress protocol.'],['Interpretation','The label is stress, not disease. The raw sensor recording is real.']]},
+  {id:'S5',study:'wesad',angle:329,signals:['hr','temp','resp'],kind:'Experimentally induced stress',outcome:'Real labeled stress recording — not an illness case',summary:'S5 is a real participant in the 15-subject WESAD dataset and provides another non-infection comparison node.',timeline:[['Baseline','Neutral physiology was recorded first.'],['Stress task','A standardized public-speaking and mental-math stressor followed.'],['Use in this demo','The node helps keep the network from equating every abnormal wearable pattern with illness.']]}
 ];
 
 let selectedId = CASES[0].id;
-let renderTimer = null;
-
-function num(id){
-  const el=$(id);
-  if(!el || el.value==='') return null;
-  const x=Number(el.value);
-  return Number.isFinite(x)?x:null;
+let timer = null;
+function num(id){const el=$(id);if(!el||el.value==='')return null;const x=Number(el.value);return Number.isFinite(x)?x:null;}
+function ratio(cur,base){return Number.isFinite(cur)&&Number.isFinite(base)&&Math.abs(base)>1e-9?(cur-base)/Math.abs(base):null;}
+function currentPattern(){
+  const p={hr:ratio(num('c_resting_hr'),num('b_resting_hr')),hrv:ratio(num('c_hrv'),num('b_hrv')),sleep:ratio(num('c_sleep_hours'),num('b_sleep_hours')),activity:ratio(num('c_steps'),num('b_steps')),temp:Number.isFinite(num('c_temperature_c'))&&Number.isFinite(num('b_temperature_c'))?num('c_temperature_c')-num('b_temperature_c'):null,spo2:Number.isFinite(num('c_spo2'))&&Number.isFinite(num('b_spo2'))?num('b_spo2')-num('c_spo2'):null,resp:ratio(num('c_respiratory_rate'),num('b_respiratory_rate'))};
+  const flags=[];if(Number.isFinite(p.hr)&&p.hr>.08)flags.push('hr');if(Number.isFinite(p.temp)&&p.temp>.35)flags.push('temp');if(Number.isFinite(p.activity)&&p.activity<-.20)flags.push('activity');if(Number.isFinite(p.sleep)&&p.sleep<-.15)flags.push('sleep');if(Number.isFinite(p.spo2)&&p.spo2>=1)flags.push('spo2');if(Number.isFinite(p.resp)&&p.resp>.12)flags.push('resp');
+  const sev=[Number.isFinite(p.hr)?clamp(p.hr/.35):null,Number.isFinite(p.temp)?clamp(p.temp/1.4):null,Number.isFinite(p.activity)?clamp(-p.activity/.8):null,Number.isFinite(p.sleep)?clamp(-p.sleep/.5):null,Number.isFinite(p.spo2)?clamp(p.spo2/6):null,Number.isFinite(p.resp)?clamp(p.resp/.5):null].filter(Number.isFinite);
+  return {...p,flags,severity:sev.length?sev.reduce((a,b)=>a+b,0)/sev.length:0,hasData:sev.length>=2};
 }
-function ratio(cur,base){
-  return Number.isFinite(cur)&&Number.isFinite(base)&&Math.abs(base)>1e-9?(cur-base)/Math.abs(base):null;
-}
-function pattern(){
-  const rhr=ratio(num('c_resting_hr'),num('b_resting_hr'));
-  const steps=ratio(num('c_steps'),num('b_steps'));
-  const sleep=ratio(num('c_sleep_hours'),num('b_sleep_hours'));
-  const temp=(Number.isFinite(num('c_temperature_c'))&&Number.isFinite(num('b_temperature_c')))?num('c_temperature_c')-num('b_temperature_c'):null;
-  const spo2=(Number.isFinite(num('c_spo2'))&&Number.isFinite(num('b_spo2')))?num('b_spo2')-num('c_spo2'):null;
-  const resp=ratio(num('c_respiratory_rate'),num('b_respiratory_rate'));
-  const parts=[
-    Number.isFinite(rhr)?clamp(rhr/.28):null,
-    Number.isFinite(steps)?clamp((-steps)/.7):null,
-    Number.isFinite(sleep)?clamp((-sleep)/.4):null,
-    Number.isFinite(temp)?clamp(temp/1.1):null,
-    Number.isFinite(spo2)?clamp(spo2/4):null,
-    Number.isFinite(resp)?clamp(resp/.35):null
-  ].filter(Number.isFinite);
-  const severity=parts.length?parts.reduce((a,b)=>a+b,0)/parts.length:0;
-  return {rhr,steps,sleep,temp,spo2,resp,severity,hasData:parts.length>=2};
-}
-function pctText(v,reverse=false){
-  if(!Number.isFinite(v)) return null;
-  const x=Math.round(Math.abs(v)*100);
-  return `${reverse&&v<0?'down ':v>=0?'up ':'down '}${x}%`;
-}
-function signals(p){
-  const out=[];
-  if(Number.isFinite(p.rhr)) out.push({label:'Resting heart rate',value:pctText(p.rhr),bad:p.rhr>.10});
-  if(Number.isFinite(p.steps)) out.push({label:'Daily steps',value:pctText(p.steps),bad:p.steps<-.25});
-  if(Number.isFinite(p.sleep)) out.push({label:'Sleep',value:pctText(p.sleep),bad:p.sleep<-.18});
-  if(Number.isFinite(p.temp)) out.push({label:'Skin temperature',value:`${p.temp>=0?'+':''}${p.temp.toFixed(1)} °C`,bad:p.temp>.5});
-  if(Number.isFinite(p.spo2)) out.push({label:'Oxygen',value:`${p.spo2>0?'-':''}${Math.abs(p.spo2).toFixed(0)} points`,bad:p.spo2>=2});
-  if(Number.isFinite(p.resp)) out.push({label:'Breathing rate',value:pctText(p.resp),bad:p.resp>.18});
-  return out.slice(0,6);
-}
-function scoreCase(c,p){
-  const s=clamp(p.severity);
-  return Math.round(clamp(72+s*24+c.bump,68,97));
-}
-function rankedCases(p){
-  return CASES.map(c=>({...c,score:scoreCase(c,p)})).sort((a,b)=>b.score-a.score);
-}
-function recommendation(p,top){
-  if(!p.hasData) return {days:14,panel:'CBC + CMP',similarity:top?.score||null,level:'WAITING',title:'Load the demo day first',body:'PulseLab needs today’s wearable values before it can compare your pattern with the real study cases.'};
-  if(p.severity>=.62) return {days:3,panel:'CBC + CMP',similarity:top.score,level:'CHECK NOW · DEMO',title:'This demo day is abnormal enough to check now.',body:'Your watch is showing several changes at once. A blood test can measure things the watch cannot see and tell you whether there is a real blood or chemistry change to follow up.'};
-  if(p.severity>=.38) return {days:7,panel:'CBC + CMP',similarity:top.score,level:'CHECK SOON',title:'This pattern is worth checking soon.',body:'The changes are not tiny. If they continue, getting another measurement is more useful than waiting for the watch alone to explain the cause.'};
-  return {days:14,panel:'CBC',similarity:top.score,level:'KEEP WATCHING',title:'This pattern is not very alarming yet.',body:'Keep collecting data. If heart rate rises, activity falls, temperature rises, or the pattern lasts, testing becomes more useful.'};
-}
-function publish(rec){
-  const payload={days:rec.days,panel:rec.panel,similarity:rec.similarity,synthetic:false,source:'Stanford COVID-19 wearable study',updatedAt:Date.now()};
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(payload));}catch(_){}
-  window.dispatchEvent(new CustomEvent('pulselab:analog-recommendation',{detail:payload}));
-}
-function shell(){
-  const target=$('populationContent');
-  if(!target||$('simplePopulation')) return;
-  target.innerHTML=`
-  <div id="simplePopulation" class="simple-population">
-    <section class="card simple-alert-card">
-      <div class="simple-alert-top">
-        <div><div class="eyebrow">Today</div><div id="simpleLevel" class="simple-level">—</div><h2 id="simpleTitle">Reading your demo day…</h2><p id="simpleBody"></p></div>
-        <div class="simple-test-box"><span>What PulseLab would check</span><strong id="simplePanel">CBC + CMP</strong><small id="simpleWindow">—</small></div>
-      </div>
-      <div id="simpleSignals" class="simple-signals"></div>
-      <div class="simple-why-test"><strong>Why get a blood test?</strong><span>A watch can tell you that your body changed. It usually cannot tell you why. Blood can add information the watch cannot measure.</span><em>A CBC/CMP does not diagnose COVID-19. This is a demo testing recommendation, not medical advice.</em></div>
-    </section>
-
-    <section class="simple-match-layout">
-      <div class="card simple-case-list-card">
-        <div class="eyebrow">Real people from a published study</div>
-        <h2>Who had warning signs like this?</h2>
-        <p class="simple-intro">These are real de-identified participant IDs from a Stanford study. Click one to see what the paper says happened to them.</p>
-        <div id="simpleCaseList" class="simple-case-list"></div>
-        <div class="simple-match-note">The <b>match % is PulseLab demo math</b> based on the direction and size of today’s wearable changes. The illness stories are real study data.</div>
-      </div>
-      <div class="card simple-case-detail-card"><div id="simpleCaseDetail"></div></div>
-    </section>
-
-    <section class="card simple-study-card">
-      <div><div class="eyebrow">Why this comparison matters</div><h2>The study really did see wearable warnings before illness.</h2></div>
-      <div class="simple-study-stats">
-        <div><strong>26 / 32</strong><span>COVID-positive participants had a change in heart rate, steps, or sleep.</span></div>
-        <div><strong>22 / 25</strong><span>with detected changes were flagged before or at symptom onset.</span></div>
-        <div><strong>15 / 24</strong><span>with enough earlier data had an online alarm by symptom onset.</span></div>
-      </div>
-      <div class="simple-source-row">
-        <div><strong>Real illness timelines:</strong> ${STUDY_NAME}</div>
-        <a href="${STUDY_URL}" target="_blank" rel="noopener">Open the paper ↗</a>
-      </div>
-      <div class="simple-source-row secondary"><div><strong>Blood-panel model:</strong> BloodNeedNet uses real CDC NHANES 2013–2014 wrist + lab data. The Stanford cases are used here only for the real illness stories.</div></div>
-    </section>
-  </div>`;
-}
-function renderSignals(p){
-  const host=$('simpleSignals');
-  const rows=signals(p);
-  host.innerHTML=rows.length?rows.map(x=>`<div class="simple-signal ${x.bad?'bad':''}"><span>${x.label}</span><strong>${x.value}</strong></div>`).join(''):`<div class="simple-empty">No current wearable values yet. Go to <b>Live Data</b> and click <b>Load demo history</b>.</div>`;
-}
-function renderList(ranked){
-  const host=$('simpleCaseList');
-  host.innerHTML=ranked.map((c,i)=>`<button type="button" class="simple-case-button ${selectedId===c.id?'selected':''}" data-case-id="${c.id}">
-    <div class="simple-case-rank">${i+1}</div>
-    <div class="simple-case-copy"><div><strong>${c.id}</strong><span>REAL STANFORD CASE</span></div><p>${c.short}</p><small>${c.outcome}</small></div>
-    <div class="simple-case-score"><strong>${c.score}%</strong><span>demo match</span></div>
-  </button>`).join('');
-  host.querySelectorAll('[data-case-id]').forEach(btn=>btn.addEventListener('click',()=>{selectedId=btn.dataset.caseId;render();}));
-}
-function renderDetail(c,p){
-  const host=$('simpleCaseDetail');
-  const hrLine=Number.isFinite(p.rhr)&&p.rhr>.08?`Your resting heart rate is ${Math.round(p.rhr*100)}% above your usual value. ${c.warning}`:c.warning;
-  const tempLine=c.temp&&Number.isFinite(p.temp)&&p.temp>.4?`Your demo temperature is also ${p.temp.toFixed(1)} °C above usual. This participant later reported elevated temperature.`:null;
-  host.innerHTML=`
-    <div class="simple-detail-head"><div><div class="eyebrow">Closest real case</div><h2>${c.id}</h2><p>De-identified participant ID from the Stanford study</p></div><div class="simple-detail-score"><strong>${c.score}%</strong><span>demo pattern match</span></div></div>
-    <div class="simple-case-warning"><strong>Why PulseLab picked this person</strong><span>${hrLine}</span>${tempLine?`<span>${tempLine}</span>`:''}</div>
-    <div class="simple-timeline">
-      ${c.timeline.map((x,i)=>`<div class="simple-time-row"><div class="simple-time-dot">${i+1}</div><div><strong>${x[0]}</strong><p>${x[1]}</p></div></div>`).join('')}
-    </div>
-    <div class="simple-outcome"><span>What happened</span><strong>${c.outcome}</strong></div>
-    <div class="simple-cohort-note"><strong>Also seen across the study:</strong> daily steps fell around illness, and sleep changed. That is why PulseLab compares several wearable signals together instead of looking at one number.</div>
-    <div class="simple-citation">Source: <a href="${STUDY_URL}" target="_blank" rel="noopener">${STUDY_NAME} ↗</a></div>`;
-}
-function render(){
-  shell();
-  if(!$('simplePopulation')) return;
-  const p=pattern();
-  const ranked=rankedCases(p);
-  if(!ranked.some(x=>x.id===selectedId)) selectedId=ranked[0].id;
-  const selected=ranked.find(x=>x.id===selectedId)||ranked[0];
-  const rec=recommendation(p,ranked[0]);
-  $('simpleLevel').textContent=rec.level;
-  $('simpleTitle').textContent=rec.title;
-  $('simpleBody').textContent=rec.body;
-  $('simplePanel').textContent=rec.panel;
-  $('simpleWindow').textContent=p.hasData?(rec.days<=3?'today or within 72 hours':rec.days<=7?'within 7 days':`within ${rec.days} days`):'waiting for data';
-  renderSignals(p);
-  renderList(ranked);
-  renderDetail(selected,p);
-  if(p.hasData) publish(rec);
-}
-function schedule(){clearTimeout(renderTimer);renderTimer=setTimeout(render,120);}
-
-document.addEventListener('input',schedule);
-document.addEventListener('change',schedule);
-window.addEventListener('pulselab:tab',e=>{if(e.detail?.tab==='population')render();});
-render();
+function signalName(k){return({hr:'heart rate',temp:'temperature',activity:'activity',sleep:'sleep',spo2:'blood oxygen',resp:'breathing rate'})[k]||k;}
+function matchScore(c,p){if(!p.hasData)return 50;const shared=c.signals.filter(x=>p.flags.includes(x)).length;const missed=p.flags.filter(x=>!c.signals.includes(x)).length;const studyBoost=c.study==='digital'?4:c.study==='covid'?3:0;return Math.round(clamp(52+shared*9-missed*2+p.severity*12+studyBoost,48,97));}
+function rank(p){return CASES.map(c=>({...c,score:matchScore(c,p)})).sort((a,b)=>b.score-a.score);}
+function recommendation(p,top){if(!p.hasData)return{days:14,panel:'CBC + CMP',level:'WAITING',title:'Load the demo day to build the network.',body:'PulseLab needs today’s wearable values before it can place you near real study participants.'};if(p.severity>=.62)return{days:3,panel:'CBC + CMP',level:'CHECK NOW · DEMO',title:`Your demo pattern sits near real illness cases like ${top.id}.`,body:'That does not mean you have the same illness. It means several warning signs moved in the same direction. A blood test can add cell and chemistry information that a watch cannot measure.'};if(p.severity>=.38)return{days:7,panel:'CBC + CMP',level:'CHECK SOON',title:'Several wearable signals moved together.',body:'The network contains both illness and non-illness examples. If this pattern persists, a blood test adds a different kind of measurement instead of asking the watch to explain the cause.'};return{days:14,panel:'CBC',level:'KEEP WATCHING',title:'Today is not very far from your baseline.',body:'Keep collecting data. If several signals drift together or stay abnormal, another measurement becomes more useful.'};}
+function publish(rec,top){const payload={days:rec.days,panel:rec.panel,similarity:top?.score||null,synthetic:false,source:'multi-study real participant network',updatedAt:Date.now()};try{localStorage.setItem(STORAGE_KEY,JSON.stringify(payload));}catch(_){}window.dispatchEvent(new CustomEvent('pulselab:analog-recommendation',{detail:payload}));}
+function shell(){const target=$('populationContent');if(!target||$('simplePopulation'))return;target.innerHTML=`<div id="simplePopulation" class="simple-population"><section class="card simple-alert-card"><div class="simple-alert-top"><div><div class="eyebrow">Today</div><div id="simpleLevel" class="simple-level">—</div><h2 id="simpleTitle">Building your network…</h2><p id="simpleBody"></p></div><div class="simple-test-box"><span>What PulseLab would check</span><strong id="simplePanel">CBC + CMP</strong><small id="simpleWindow">—</small></div></div><div id="simpleSignals" class="simple-signals"></div><div class="simple-why-test"><strong>Why blood can help</strong><span>Wearables show that something changed. Blood tests measure different things — blood cells, inflammation and chemistry — that the watch cannot see.</span><em>Nearby nodes do not diagnose you. They are real comparison cases from published studies.</em></div></section><section class="simple-match-layout network-layout"><div class="card network-card"><div class="network-heading"><div><div class="eyebrow">Real participant network</div><h2>People closer to you had more similar warning signs.</h2><p>Click any node. Distance is PulseLab demo math; each participant, event and number shown in the detail panel comes from the cited study.</p></div><div id="networkLegend" class="network-legend"></div></div><div id="participantNetwork" class="participant-network" aria-label="Interactive similarity network"></div><div class="network-foot"><span><b>YOU</b> = today’s demo pattern</span><span>Closer node = more shared warning signs</span><span>Line strength = higher demo match</span></div></div><div class="card simple-case-detail-card"><div id="simpleCaseDetail"></div></div></section><section class="card study-library-card"><div><div class="eyebrow">Studies in this network</div><h2>Not just COVID.</h2><p>The network mixes infection, inflammation and stress examples so one abnormal wearable pattern is not treated as one diagnosis.</p></div><div id="studyLibrary" class="study-library"></div></section></div>`;}
+function renderSignals(p){const rows=[];if(Number.isFinite(p.hr))rows.push(['Resting heart rate',`${p.hr>=0?'+':''}${Math.round(p.hr*100)}%`,p.hr>.10]);if(Number.isFinite(p.hrv))rows.push(['HRV',`${p.hrv>=0?'+':''}${Math.round(p.hrv*100)}%`,p.hrv<-.18]);if(Number.isFinite(p.sleep))rows.push(['Sleep',`${p.sleep>=0?'+':''}${Math.round(p.sleep*100)}%`,p.sleep<-.18]);if(Number.isFinite(p.activity))rows.push(['Steps',`${p.activity>=0?'+':''}${Math.round(p.activity*100)}%`,p.activity<-.25]);if(Number.isFinite(p.temp))rows.push(['Skin temperature',`${p.temp>=0?'+':''}${p.temp.toFixed(1)} °C`,p.temp>.5]);if(Number.isFinite(p.spo2))rows.push(['Blood oxygen',`${p.spo2>0?'-':''}${Math.abs(p.spo2).toFixed(0)} points`,p.spo2>=2]);if(Number.isFinite(p.resp))rows.push(['Breathing rate',`${p.resp>=0?'+':''}${Math.round(p.resp*100)}%`,p.resp>.18]);$('simpleSignals').innerHTML=rows.length?rows.slice(0,7).map(x=>`<div class="simple-signal ${x[2]?'bad':''}"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join(''):`<div class="simple-empty">No current wearable values yet. Go to <b>Live Data</b> and click <b>Load demo history</b>.</div>`;}
+function coords(c,score){const rad=c.angle*Math.PI/180;const r=18+(100-score)*.88;return{x:50+Math.cos(rad)*r,y:50+Math.sin(rad)*r};}
+function renderLegend(){$('networkLegend').innerHTML=Object.entries(STUDIES).map(([k,s])=>`<span class="study-chip ${k}"><i></i>${s.short}</span>`).join('');}
+function renderNetwork(ranked){const host=$('participantNetwork');const byId=new Map(ranked.map(x=>[x.id,x]));const lines=CASES.map(c=>{const x=byId.get(c.id),p=coords(c,x.score);return`<line x1="50" y1="50" x2="${p.x.toFixed(1)}" y2="${p.y.toFixed(1)}" class="network-edge ${c.study}" style="opacity:${(.12+(x.score-45)/85).toFixed(2)}"/>`;}).join('');const nodes=CASES.map(c=>{const x=byId.get(c.id),p=coords(c,x.score),s=STUDIES[c.study];return`<button type="button" class="network-node ${c.study} ${selectedId===c.id?'selected':''}" data-case-id="${c.id}" style="left:${p.x.toFixed(1)}%;top:${p.y.toFixed(1)}%" title="${c.id} · ${x.score}% demo match · ${s.name}"><strong>${c.id.replace('Participant ','P')}</strong><span>${x.score}%</span></button>`;}).join('');host.innerHTML=`<svg class="network-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><circle cx="50" cy="50" r="18"/><circle cx="50" cy="50" r="32"/><circle cx="50" cy="50" r="45"/>${lines}</svg><div class="you-node"><strong>YOU</strong><span>demo day</span></div>${nodes}`;host.querySelectorAll('[data-case-id]').forEach(btn=>btn.addEventListener('click',()=>{selectedId=btn.dataset.caseId;render();}));}
+function sharedText(c,p){const x=c.signals.filter(s=>p.flags.includes(s));return x.length?x.map(signalName).join(', '):'overall wearable direction';}
+function bars(c){if(!c.realNumbers?.length)return`<div class="real-data-empty"><strong>No made-up curve here.</strong><span>This paper gives a real event timeline for this participant, but not enough numeric values in the text to recreate a trustworthy line graph.</span></div>`;return`<div class="real-number-chart"><div class="real-number-title">Real numbers reported in the paper</div>${c.realNumbers.map(n=>`<div class="real-number-row"><div><span>${n.label}</span><small>${n.note||''}</small></div><div class="real-number-track"><i style="width:${clamp(n.value/n.max)*100}%"></i></div><b>${n.value}${n.suffix||''}</b></div>`).join('')}</div>`;}
+function renderDetail(c,p){const s=STUDIES[c.study];$('simpleCaseDetail').innerHTML=`<div class="simple-detail-head"><div><div class="eyebrow">Selected real participant</div><h2>${c.id}</h2><p>${s.name}</p></div><div class="simple-detail-score"><strong>${c.score}%</strong><span>demo match</span></div></div><div class="study-badge ${c.study}">${c.kind}</div><div class="simple-case-warning"><strong>Why this node is near you</strong><span>You share these warning signs: <b>${sharedText(c,p)}</b>.</span><span>The match score and node position are PulseLab demo calculations. The participant story below is real study data.</span></div>${bars(c)}<div class="simple-timeline">${c.timeline.map((x,i)=>`<div class="simple-time-row"><div class="simple-time-dot">${i+1}</div><div><strong>${x[0]}</strong><p>${x[1]}</p></div></div>`).join('')}</div><div class="simple-outcome"><span>What actually happened</span><strong>${c.outcome}</strong></div><div class="simple-citation">Source: <a href="${s.url}" target="_blank" rel="noopener">${s.citation} ↗</a></div>`;}
+function renderStudyLibrary(){$('studyLibrary').innerHTML=Object.entries(STUDIES).map(([k,s])=>{const count=CASES.filter(c=>c.study===k).length;const desc=k==='covid'?'Real COVID illness timelines and pre-symptom heart-rate warnings.':k==='digital'?'Lyme disease, rhinovirus and inflammatory episodes with wearable + blood-test findings.':'Real labeled stress recordings from wrist and chest sensors; these are intentionally non-infection examples.';return`<article class="study-library-item ${k}"><div class="study-library-top"><span>${s.short}</span><b>${count} nodes</b></div><h3>${s.name}</h3><p>${desc}</p><a href="${s.url}" target="_blank" rel="noopener">Open study ↗</a></article>`;}).join('');}
+function render(){shell();if(!$('simplePopulation'))return;const p=currentPattern(),ranked=rank(p),top=ranked[0];if(!ranked.some(x=>x.id===selectedId))selectedId=top.id;const selected=ranked.find(x=>x.id===selectedId)||top;const rec=recommendation(p,top);$('simpleLevel').textContent=rec.level;$('simpleTitle').textContent=rec.title;$('simpleBody').textContent=rec.body;$('simplePanel').textContent=rec.panel;$('simpleWindow').textContent=p.hasData?(rec.days<=3?'today or within 72 hours':rec.days<=7?'within 7 days':`within ${rec.days} days`):'waiting for data';renderSignals(p);renderLegend();renderNetwork(ranked);renderDetail(selected,p);renderStudyLibrary();if(p.hasData)publish(rec,top);}
+function schedule(){clearTimeout(timer);timer=setTimeout(render,100);}
+document.addEventListener('input',schedule);document.addEventListener('change',schedule);window.addEventListener('pulselab:tab',e=>{if(e.detail?.tab==='population')render();});render();
