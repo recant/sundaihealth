@@ -1,3 +1,5 @@
+import './chat.js';
+
 const $ = id => document.getElementById(id);
 
 const state = {
