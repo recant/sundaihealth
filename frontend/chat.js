@@ -1,59 +1,70 @@
-const CHAT_HISTORY_LIMIT = 8;
-const chatHistory = [];
-let chatBusy = false;
+const $=id=>document.getElementById(id);
+let busy=false;
+const history=[];
 
-const $ = id => document.getElementById(id);
 function text(id){return $(id)?.textContent?.trim()||'';}
-function inputValue(id){const el=$(id);if(!el||el.value==='')return null;const n=Number(el.value);return Number.isFinite(n)?n:el.value;}
-function collectCurrentMetrics(){const keys=['resting_hr','hrv','sleep_hours','steps','temperature_c','spo2','respiratory_rate','cgm_mean','cgm_cv'];const out={};for(const key of keys){const value=inputValue(`c_${key}`);if(value!==null)out[key]=value;}return out;}
-function collectBaselineMetrics(){const keys=['resting_hr','hrv','sleep_hours','steps','temperature_c','spo2','respiratory_rate','cgm_mean','cgm_cv'];const out={};for(const key of keys){const value=inputValue(`b_${key}`);if(value!==null)out[key]=value;}return out;}
-function collectList(selector,max=5){return [...document.querySelectorAll(selector)].map(el=>el.textContent.replace(/\s+/g,' ').trim()).filter(Boolean).slice(0,max);}
-
-function dashboardSnapshot(){
-  const score=Number(text('score')),telemetrySource=text('telemetrySource');
+function metric(key){const el=$(`c_${key}`);const n=Number(el?.value);return el&&el.value!==''&&Number.isFinite(n)?n:null;}
+function list(selector,max=4){return [...document.querySelectorAll(selector)].map(x=>x.textContent.replace(/\s+/g,' ').trim()).filter(Boolean).slice(0,max);}
+function snapshot(){
   return {
-    recommendation:text('recommendation')||'No wearable-driven recommendation yet',score:Number.isFinite(score)?score:null,headline:text('headline'),summary:text('summary'),model:text('modelUsed'),personalization_stage:text('profileStage'),personalization_confidence:text('profileConfidence'),wearable_days:text('profileDays'),blood_results_seen:text('profileLabs'),reasons:collectList('#reasons .reason'),ranked_tests:collectList('#tests .test-item'),
-    testing_plan:{next_test:text('nextTestName')||null,window:text('nextTestWindow')||null,reason:text('nextTestReason')||null,persistence_projection:collectList('#projection .projection-item',3)},
-    population:{headline:text('simpleTitle')||null,summary:text('simpleBody')||null,nearest_people:collectList('#participantNetwork .network-node',6),selected_case:collectList('#simpleCaseDetail .simple-time-row',5),source:'Mishra et al. Nature Biomedical Engineering (2020); Li et al. PLOS Biology (2017); WESAD / Schmidt et al. ICMI (2018)'},
-    current_metrics:collectCurrentMetrics(),manual_starting_baseline:collectBaselineMetrics(),persistence_days:inputValue('persistence'),days_since_last_blood_test:inputValue('lastBlood'),
-    telemetry:{source:telemetrySource,synthetic:/synthetic/i.test(telemetrySource),heart_rate_now:text('hrNow')?`${text('hrNow')} bpm`:null,hrv_display:text('telemetryHrv')||null,respiratory_rate_display:text('telemetryResp')||null,spo2_display:text('telemetrySpo2')||null,skin_temperature_display:text('telemetryTemp')||null},
-    important_interpretation:'PulseLab predicts expected blood-testing yield and a persistence scenario. The Population page mixes real participant/event data from several published studies. Its match percentage and network distance are demo pattern-matching, not validated disease-risk scores. PulseLab is not a diagnosis, a validated doctor/ER triage score, or currently a validated future-disease-incidence model.'
+    testing_plan:{next_test:text('nextTestName'),window:text('testingUrgency'),reason:text('nextTestReason')},
+    live:{headline:text('liveAlertTitle'),summary:text('liveAlertBody'),changes:list('#liveAlertMetrics > div',5)},
+    population:{
+      nearest_people:list('#participantNetwork .network-node',4),
+      selected_name:document.querySelector('#simpleCaseDetail .simple-detail-head h2')?.textContent?.trim()||null,
+      selected_outcome:document.querySelector('#simpleCaseDetail .simple-outcome strong')?.textContent?.trim()||null,
+      selected_summary:document.querySelector('#simpleCaseDetail .simple-case-warning span')?.textContent?.trim()||null
+    },
+    current_metrics:{
+      resting_hr:metric('resting_hr'),hrv:metric('hrv'),sleep_hours:metric('sleep_hours'),
+      temperature_c:metric('temperature_c'),spo2:metric('spo2'),respiratory_rate:metric('respiratory_rate')
+    },
+    note:'The live stream is simulated. WHOOP history is user-uploaded. Population participant outcomes are from cited studies; match distance is PulseLab demo math.'
   };
 }
-
-function localFallback(message,snapshot=dashboardSnapshot()){
-  const q=String(message||'').toLowerCase();
-  const severe=/(chest pain|chest pressure|can't breathe|cannot breathe|severe shortness of breath|faint(ed|ing)?|passed out|confusion|one[- ]sided weakness|severe bleeding)/i.test(message||'');
-  if(severe)return 'Those symptoms can require prompt medical evaluation. PulseLab is not designed to decide whether an emergency symptom is safe to watch at home, so do not rely on its testing score for that decision.';
-  if(/square root of 4/.test(q))return 'The square root of 4 is 2.';
-  if(/(doctor|physician|urgent care|\ber\b|emergency)/i.test(q)){const scoreText=Number.isFinite(snapshot.score)?` Its testing-priority score is ${snapshot.score}/100.`:'';return `${snapshot.recommendation}.${scoreText} That result estimates whether blood testing may be informative; it does not determine whether you medically need a doctor.`;}
-  if(/(why.*(not|no)|no test|not recommending)/i.test(q))return `PulseLab is only saying it does not currently see a strong wearable-driven reason for a new blood draw. ${snapshot.summary||'The model combines population prediction with deviation from the personal baseline.'}`;
-  if(/(what changed|baseline|why now|driver)/i.test(q)){const reasons=snapshot.reasons?.length?snapshot.reasons.join(' '):'No model drivers are displayed yet.';return `The strongest displayed deviations from baseline are: ${reasons}`;}
-  if(/(similar|analog|people like|cohort|population|network)/i.test(q)&&snapshot.population?.summary){const people=snapshot.population.nearest_people?.length?` Nearby real-study nodes shown include: ${snapshot.population.nearest_people.join(' ')}`:'';return `${snapshot.population.headline}. ${snapshot.population.summary}${people} The participant events come from ${snapshot.population.source}; the displayed match percentages and node distances are demo math, not medical risk scores.`;}
-  if(/(which.*test|blood test|panel|next test)/i.test(q)&&snapshot.testing_plan?.next_test)return `The current plan surfaces ${snapshot.testing_plan.next_test} ${snapshot.testing_plan.window||''}. ${snapshot.testing_plan.reason||''}`;
-  return `${snapshot.recommendation}. ${snapshot.summary||'PulseLab combines a population-trained blood-testing model with a personal wearable baseline.'}`;
+function fallback(message,s=snapshot()){
+  const q=message.toLowerCase(), plan=s.testing_plan?.next_test;
+  if(/square root of 4/.test(q))return'The square root of 4 is 2.';
+  if(/similar|people|patient|population|network/.test(q)){
+    if(s.population.selected_name)return `You're closest to ${s.population.selected_name} right now. ${s.population.selected_outcome||''} That does not mean you have the same condition, but your pattern is abnormal enough that PulseLab says: ${plan||'get checked'}.`;
+    return `Your pattern is close to several real study participants. ${plan?`PulseLab says: ${plan}`:''}`;
+  }
+  if(/test|cbc|cmp|what should|do next/.test(q))return plan?`Yes. ${plan} ${s.testing_plan.reason||''}`:'Upload your WHOOP history first so PulseLab can learn your baseline.';
+  if(/change|wrong|off|baseline|why/.test(q))return s.live.changes?.length?`Several things moved at once: ${s.live.changes.join('; ')}. ${plan?`That is why PulseLab says: ${plan}`:''}`:s.live.summary;
+  return plan?`${plan} ${s.live.summary||''}`:(s.live.summary||'Upload your WHOOP history first.');
 }
-
-function ensureChatStyles(){if(document.querySelector('link[data-pulselab-chat]'))return;const link=document.createElement('link');link.rel='stylesheet';link.href='./chat.css';link.dataset.pulselabChat='1';document.head.appendChild(link);}
-function buildChat(){
+function build(){
   const target=$('assistantContent');if(!target||$('pulseChat'))return;
-  const card=document.createElement('section');card.id='pulseChat';card.className='card chat-card';
-  card.innerHTML=`<div class="chat-header"><div><div class="eyebrow">Ask PulseLab</div><h2>Talk through the recommendation.</h2></div><span class="chat-context-pill">Reads current model state</span></div><div class="chat-intro">Ask about the exact next test, your calendar, similar real study cases, what changed, or what the result does and does not say about seeing a doctor.</div><div id="chatSuggestions" class="chat-suggestions"><button type="button" data-chat-prompt="Does this mean I should see a doctor?">Should I see a doctor?</button><button type="button" data-chat-prompt="Why is this particular blood test the next one?">Why this test?</button><button type="button" data-chat-prompt="What changed from my baseline?">What changed?</button><button type="button" data-chat-prompt="What happened to the real study participants nearest to me in the network?">Similar people?</button></div><div id="chatMessages" class="chat-messages" aria-live="polite"><div class="chat-row assistant"><div class="chat-avatar">P</div><div class="chat-bubble">I can explain the current testing plan, what changed, and the real published participants shown on the Population network. I will separate real study outcomes from the demo match score.</div></div></div><form id="chatForm" class="chat-form"><textarea id="chatInput" rows="2" maxlength="2000" placeholder="Ask about your current result…" aria-label="Ask PulseLab about the current result"></textarea><button id="chatSend" type="submit">Send</button></form><div class="chat-foot"><span id="chatMode">Model-aware explanation layer</span><span>For severe or rapidly worsening symptoms, seek medical care rather than relying on this prototype.</span></div>`;
-  target.appendChild(card);
-  card.querySelectorAll('[data-chat-prompt]').forEach(button=>button.addEventListener('click',()=>sendChat(button.dataset.chatPrompt||'')));
-  $('chatForm').addEventListener('submit',event=>{event.preventDefault();const message=$('chatInput').value.trim();if(message)sendChat(message);});
-  $('chatInput').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();const message=$('chatInput').value.trim();if(message)sendChat(message);}});
+  target.innerHTML=`<section id="pulseChat" class="card chat-card">
+    <div class="chat-header"><div><div class="eyebrow">Ask PulseLab</div><h2>What do you want to know?</h2></div></div>
+    <div id="chatSuggestions" class="chat-suggestions">
+      <button type="button" data-q="What changed?">What changed?</button>
+      <button type="button" data-q="Why do I need a CBC and CMP?">Why this test?</button>
+      <button type="button" data-q="Who am I most similar to and what happened to them?">Who am I like?</button>
+    </div>
+    <div id="chatMessages" class="chat-messages"><div class="chat-row assistant"><div class="chat-avatar">P</div><div class="chat-bubble">Ask me about today's signal.</div></div></div>
+    <form id="chatForm" class="chat-form"><textarea id="chatInput" rows="2" maxlength="1800" placeholder="Ask a question…"></textarea><button id="chatSend" type="submit">Send</button></form>
+    <div class="chat-foot"><span id="chatMode">Plain-English explanation</span></div>
+  </section>`;
+  document.querySelectorAll('[data-q]').forEach(b=>b.addEventListener('click',()=>send(b.dataset.q)));
+  $('chatForm').addEventListener('submit',e=>{e.preventDefault();const q=$('chatInput').value.trim();if(q)send(q);});
 }
-
-function appendMessage(role,content,pending=false){const wrap=document.createElement('div');wrap.className=`chat-row ${role}${pending?' pending':''}`;if(role==='assistant'){const avatar=document.createElement('div');avatar.className='chat-avatar';avatar.textContent='P';wrap.appendChild(avatar);}const bubble=document.createElement('div');bubble.className='chat-bubble';bubble.textContent=content;wrap.appendChild(bubble);$('chatMessages').appendChild(wrap);$('chatMessages').scrollTop=$('chatMessages').scrollHeight;return wrap;}
-function setBusy(value){chatBusy=value;$('chatSend').disabled=value;$('chatInput').disabled=value;$('chatSend').textContent=value?'Thinking…':'Send';}
-async function sendChat(message){
-  const clean=String(message||'').trim();if(!clean||chatBusy)return;
-  appendMessage('user',clean);chatHistory.push({role:'user',text:clean});while(chatHistory.length>CHAT_HISTORY_LIMIT)chatHistory.shift();$('chatInput').value='';setBusy(true);
-  const snapshot=dashboardSnapshot(),pending=appendMessage('assistant','Reading the current model state…',true);
-  try{const response=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:clean,snapshot,history:chatHistory.slice(0,-1)})});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||`Chat failed (${response.status})`);const reply=String(data.reply||localFallback(clean,snapshot)).trim();pending.querySelector('.chat-bubble').textContent=reply;pending.classList.remove('pending');chatHistory.push({role:'assistant',text:reply});while(chatHistory.length>CHAT_HISTORY_LIMIT)chatHistory.shift();$('chatMode').textContent=data.mode==='gemini'?`${data.model||'Gemini'} · dashboard-aware explanation`:'Local safety explainer · Gemini optional';}
-  catch(_){const reply=localFallback(clean,snapshot);pending.querySelector('.chat-bubble').textContent=reply;pending.classList.remove('pending');chatHistory.push({role:'assistant',text:reply});while(chatHistory.length>CHAT_HISTORY_LIMIT)chatHistory.shift();$('chatMode').textContent='Local safety explainer · server chat unavailable';}
-  finally{setBusy(false);$('chatInput').focus();}
+function append(role,msg){
+  const row=document.createElement('div');row.className=`chat-row ${role}`;
+  if(role==='assistant'){const a=document.createElement('div');a.className='chat-avatar';a.textContent='P';row.appendChild(a);}
+  const b=document.createElement('div');b.className='chat-bubble';b.textContent=msg;row.appendChild(b);$('chatMessages').appendChild(row);$('chatMessages').scrollTop=$('chatMessages').scrollHeight;return b;
 }
-
-ensureChatStyles();buildChat();
+async function send(message){
+  if(busy||!message)return;busy=true;$('chatSend').disabled=true;
+  append('user',message);$('chatInput').value='';const pending=append('assistant','…');
+  try{
+    const s=snapshot();
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,snapshot:s,history:history.slice(-6)})});
+    const data=await r.json().catch(()=>({}));
+    const reply=String(data.reply||fallback(message,s)).trim();
+    pending.textContent=reply;history.push({role:'user',text:message},{role:'assistant',text:reply});
+    $('chatMode').textContent=data.mode==='gemini'?'AI · reads this screen':'Local explanation';
+  }catch(_){pending.textContent=fallback(message);}
+  finally{busy=false;$('chatSend').disabled=false;$('chatInput').focus();}
+}
+build();

@@ -6,19 +6,18 @@ DIST = HERE / 'dist'
 MODEL = HERE / 'model' / 'bloodneed-model.json'
 
 if not MODEL.exists():
-    raise FileNotFoundError(
-        'Missing model/bloodneed-model.json. Train BloodNeedNet before deployment.'
-    )
+    raise FileNotFoundError('Missing model/bloodneed-model.json. Train BloodNeedNet before deployment.')
 
 if DIST.exists():
     shutil.rmtree(DIST)
 DIST.mkdir()
 
 for name in [
-    'index.html', 'app.js', 'demo-scenario.js', 'styles.css', 'whoop.css',
+    'index.html', 'app.js', 'styles.css', 'whoop.css',
     'telemetry.css', 'telemetry.js', 'chat.css', 'chat.js',
     'forecast.css', 'forecast.js', 'tabs.css', 'tabs.js',
-    'population-simple.css', 'population-simple.js', 'measurements.css', 'measurements.js',
+    'population-simple.css', 'population-simple.js',
+    'measurements.css', 'measurements.js', 'csv-import.css',
     'model-runtime.js', 'personalization.js'
 ]:
     shutil.copy2(HERE / name, DIST / name)
