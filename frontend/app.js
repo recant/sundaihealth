@@ -7,7 +7,7 @@ import {
 const METRICS=[
   ['resting_hr','Resting heart rate','bpm'],['hrv','HRV (RMSSD)','ms'],
   ['sleep_hours','Sleep duration','hours'],['steps','Daily steps','steps'],
-  ['temperature_c','Skin/body temperature','°C'],['spo2','SpO₂','%'],
+  ['temperature_c','Skin temperature','°C'],['spo2','SpO₂','%'],
   ['respiratory_rate','Respiratory rate','/min'],['cgm_mean','CGM mean glucose','mg/dL'],
   ['cgm_cv','CGM variability (CV)','%']
 ];
@@ -47,7 +47,7 @@ function anomalyDetails(b,c,stats={}){
     const learnedScale=Number.isFinite(stats?.[key]?.mad)&&stats[key].mad>0
       ? (key==='temperature_c'?stats[key].mad:key==='spo2'?stats[key].mad/100:stats[key].mad/Math.max(Math.abs(b[key]),1e-9))
       : null;
-    const denominator=Math.max(scale||1, learnedScale||0);
+    const denominator=Math.max(scale||1,learnedScale||0);
     const z=Math.abs(d)/(denominator||1);
     rows.push({key,label,unit,baseline:b[key],current:c[key],delta:d,z,personalDays:stats?.[key]?.n||0});
   }
@@ -56,30 +56,29 @@ function anomalyDetails(b,c,stats={}){
 }
 
 function finiteDiffAttribution(features,baseProb){
-  if(!MODEL) return [];
+  if(!MODEL)return[];
   const out=[];
   const replacements={sleep_delta_pct:0,activity_delta_pct:0,persistence_days:1,current_sleep_h:features.baseline_sleep_h};
-  for(const [k,repl] of Object.entries(replacements)){
-    if(!Number.isFinite(features[k])||!Number.isFinite(repl)) continue;
+  for(const[k,repl]of Object.entries(replacements)){
+    if(!Number.isFinite(features[k])||!Number.isFinite(repl))continue;
     const p=runPanelModel(MODEL,{...features,[k]:repl}).any_abnormal;
     out.push({key:k,effect:baseProb-p});
   }
   return out.sort((a,b)=>Math.abs(b.effect)-Math.abs(a.effect));
 }
 
-function testCards(probs, anomaly){
+function testCards(probs,anomaly){
   const keys=['glycemic','cbc','metabolic','lipid'];
   const mods={
-    glycemic: anomaly.rows.filter(r=>['cgm_mean','cgm_cv'].includes(r.key)).reduce((s,r)=>s+Math.min(r.z,2)*.035,0),
-    cbc: anomaly.rows.filter(r=>['resting_hr','hrv','spo2'].includes(r.key)).reduce((s,r)=>s+Math.min(r.z,2)*.025,0),
-    metabolic: anomaly.rows.filter(r=>['resting_hr','hrv','temperature_c','respiratory_rate','spo2'].includes(r.key)).reduce((s,r)=>s+Math.min(r.z,2)*.02,0),
+    glycemic:anomaly.rows.filter(r=>['cgm_mean','cgm_cv'].includes(r.key)).reduce((s,r)=>s+Math.min(r.z,2)*.035,0),
+    cbc:anomaly.rows.filter(r=>['resting_hr','hrv','spo2'].includes(r.key)).reduce((s,r)=>s+Math.min(r.z,2)*.025,0),
+    metabolic:anomaly.rows.filter(r=>['resting_hr','hrv','temperature_c','respiratory_rate','spo2'].includes(r.key)).reduce((s,r)=>s+Math.min(r.z,2)*.02,0),
     lipid:0
   };
   return keys.map(k=>({key:k,p:clamp(probs[k]+mods[k]),...MODEL.panel_tests[k]})).sort((a,b)=>b.p-a.p);
 }
-
-function label(score){if(score>=.62)return['CONSIDER TESTING SOON','high']; if(score>=.4)return['WATCH THE TREND','watch']; return['NO EVENT-TRIGGERED TEST','low'];}
-function fmtDelta(r){if(r.key==='temperature_c')return `${r.delta>=0?'+':''}${r.delta.toFixed(1)} °C`; if(r.key==='spo2')return `${r.delta>=0?'+':''}${(r.delta*100).toFixed(1)} points`;return `${r.delta>=0?'+':''}${(r.delta*100).toFixed(0)}%`;}
+function label(score){if(score>=.62)return['CONSIDER TESTING SOON','high'];if(score>=.4)return['WATCH THE TREND','watch'];return['NO EVENT-TRIGGERED TEST','low'];}
+function fmtDelta(r){if(r.key==='temperature_c')return`${r.delta>=0?'+':''}${r.delta.toFixed(1)} °C`;if(r.key==='spo2')return`${r.delta>=0?'+':''}${(r.delta*100).toFixed(1)} points`;return`${r.delta>=0?'+':''}${(r.delta*100).toFixed(0)}%`;}
 
 function renderProfile(){
   const s=personalizationStatus(PROFILE);
@@ -94,17 +93,15 @@ function render(){
   if(!MODEL)return;
   const manual=map('baseline'),c=map('current');
   if(Object.keys(c).length){
-    if(SKIP_OBSERVE_ONCE) SKIP_OBSERVE_ONCE=false;
+    if(SKIP_OBSERVE_ONCE)SKIP_OBSERVE_ONCE=false;
     else PROFILE=observeToday(PROFILE,c);
   }
   renderProfile();
-  const learned=getPersonalBaseline(PROFILE,manual,c);
-  const b=learned.baseline;
+  const learned=getPersonalBaseline(PROFILE,manual,c),b=learned.baseline;
   const entered=Object.keys(c).some(k=>Number.isFinite(c[k]));
   if(!entered){$('emptyState').classList.remove('hidden');$('resultView').classList.add('hidden');return;}
   const features=modelFeatures(b,c);
-  const globalProbs=runPanelModel(MODEL,features);
-  LAST_GLOBAL=globalProbs;
+  const globalProbs=runPanelModel(MODEL,features);LAST_GLOBAL=globalProbs;
   const probs=personalizeProbabilities(globalProbs,PROFILE);
   const an=anomalyDetails(b,c,learned.stats);
   const persistence=Number($('persistence').value||1);
@@ -112,130 +109,103 @@ function render(){
   const since=num('lastBlood');
   const recencyBoost=Number.isFinite(since)?clamp((since-180)/540)*.08:0;
   const score=clamp(.68*probs.any_abnormal+.32*an.strength+persistenceBoost+recencyBoost);
-  const [status,level]=label(score);
-  const tests=testCards(probs,an);
-  const pstat=personalizationStatus(PROFILE);
+  const[status,level]=label(score),tests=testCards(probs,an),pstat=personalizationStatus(PROFILE);
 
   $('emptyState').classList.add('hidden');$('resultView').classList.remove('hidden');
   $('recommendation').textContent=status;$('recommendation').dataset.level=level;
   $('score').textContent=Math.round(score*100);
   $('headline').textContent=score>=.62?'Your recent wearable pattern increases the expected yield of blood testing.':score>=.4?'There is enough drift to keep watching closely.':'The model does not see a strong event-trigger for testing right now.';
   $('summary').textContent=`Population model: ${Math.round(globalProbs.any_abnormal*100)}% expected screening yield. Personalized model: ${Math.round(probs.any_abnormal*100)}%. Physiology drift from your learned baseline: ${Math.round(an.strength*100)}%.`;
-  $('modelUsed').textContent=`${MODEL.name} ${MODEL.version} · ${pstat.stage}`;
-  $('generatedAt').textContent='updates automatically';
+  $('modelUsed').textContent=`${MODEL.name} ${MODEL.version} · ${pstat.stage}`;$('generatedAt').textContent='updates automatically';
 
   const top=an.rows.slice(0,4);
-  $('reasons').innerHTML=top.length?top.map(r=>`<div class="reason"><div class="signal-name">${r.label}</div><div><strong>${Number(r.baseline).toFixed(1)} → ${r.current} ${r.unit} (${fmtDelta(r)})</strong><p>${r.z>=1.5?'Large':'Moderate'} deviation from ${r.personalDays>=3?`your learned ${r.personalDays}-day history`:'the current fallback baseline'}.</p></div></div>`).join(''):'<p class="muted">Add current wearable values to see the drivers.</p>';
-
+  $('reasons').innerHTML=top.length?top.map(r=>`<div class="reason"><div class="signal-name">${r.label}</div><div><strong>${Number(r.baseline).toFixed(1)} → ${r.current} ${r.unit} (${fmtDelta(r)})</strong><p>${r.z>=1.5?'Large':'Moderate'} deviation from ${r.personalDays>=3?`your learned ${r.personalDays}-day history`:'the current fallback baseline'}.</p></div></div>`).join(''):'<p class="muted">Connect WHOOP or add current wearable values to see the drivers.</p>';
   const shown=tests.filter((t,i)=>t.p>=.38||i===0).slice(0,4);
   $('tests').innerHTML=shown.map(t=>`<article class="test-item"><div class="test-top"><h3>${t.name}</h3><span class="prob">${Math.round(t.p*100)}%</span></div><p>${t.description} Current personalized estimate: ${Math.round(t.p*100)}%.</p></article>`).join('');
   $('panelBars').innerHTML=tests.map(t=>`<div class="bar-row"><span>${t.name}</span><div class="bar"><i style="width:${Math.round(t.p*100)}%"></i></div><b>${Math.round(t.p*100)}%</b></div>`).join('');
-
   const attr=finiteDiffAttribution(features,globalProbs.any_abnormal).slice(0,3);
   const offsets=['glycemic','cbc','metabolic','lipid'].filter(k=>(PROFILE.panel_feedback_counts?.[k]||0)>0).map(k=>`${k} n=${PROFILE.panel_feedback_counts[k]}`);
   $('modelDrivers').textContent=attr.length?`Global model drivers: ${attr.map(a=>`${a.key.replaceAll('_',' ')} ${a.effect>=0?'+':''}${Math.round(a.effect*100)} pts`).join(' · ')}${offsets.length?` · Personal calibration: ${offsets.join(', ')}`:''}`:'Model drivers will appear when enough compatible features are supplied.';
 }
 function schedule(){clearTimeout(timer);timer=setTimeout(render,120);}
 
-// WHOOP CSV import -----------------------------------------------------------
-function parseCSV(text){
-  const rows=[]; let row=[],field='',quoted=false;
-  for(let i=0;i<text.length;i++){
-    const ch=text[i],next=text[i+1];
-    if(ch==='"'){
-      if(quoted&&next==='"'){field+='"';i++;} else quoted=!quoted;
-    } else if(ch===','&&!quoted){row.push(field);field='';}
-    else if((ch==='\n'||ch==='\r')&&!quoted){
-      if(ch==='\r'&&next==='\n')i++;
-      row.push(field);field=''; if(row.some(x=>x.trim()!==''))rows.push(row); row=[];
-    } else field+=ch;
+function setWhoopUI(state,message=''){
+  const card=document.querySelector('.whoop-card'),connect=$('whoopConnectBtn'),disconnect=$('whoopDisconnectBtn'),status=$('whoopStatus');
+  card.classList.remove('source-success','source-error');
+  connect.disabled=false;connect.classList.remove('hidden');disconnect.classList.add('hidden');
+  if(state==='connected'){
+    card.classList.add('source-success');connect.textContent='WHOOP connected';connect.disabled=true;disconnect.classList.remove('hidden');
+  }else if(state==='syncing'){
+    connect.textContent='Syncing WHOOP…';connect.disabled=true;
+  }else if(state==='unconfigured'){
+    card.classList.add('source-error');connect.textContent='WHOOP setup required';connect.disabled=true;
+  }else if(state==='error'){
+    card.classList.add('source-error');connect.textContent='Reconnect WHOOP';
+  }else connect.textContent='Connect WHOOP';
+  status.textContent=message;
+}
+
+function fillCurrentFromRecord(rec){
+  const keys=['resting_hr','hrv','sleep_hours','steps','temperature_c','spo2','respiratory_rate','cgm_mean','cgm_cv'];
+  for(const key of keys){
+    const value=Number(rec?.[key]);
+    if(Number.isFinite(value)&&$(`c_${key}`))$(`c_${key}`).value=Number(value.toFixed(key==='steps'?0:2));
   }
-  row.push(field); if(row.some(x=>x.trim()!==''))rows.push(row);
-  return rows;
 }
-function normHeader(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
-function findHeader(headers,aliases){
-  const hn=headers.map(h=>normHeader(h));
-  for(const alias of aliases){const a=normHeader(alias);const exact=hn.indexOf(a);if(exact>=0)return headers[exact];}
-  for(const alias of aliases){const a=normHeader(alias);const idx=hn.findIndex(h=>h.includes(a)||a.includes(h));if(idx>=0)return headers[idx];}
-  return null;
-}
-function numericValue(v){const n=Number(String(v??'').replace(/[%,$]/g,'').trim());return Number.isFinite(n)?n:null;}
-function durationHours(v,header=''){
-  const s=String(v??'').trim(); if(!s)return null;
-  if(/^\d{1,2}:\d{2}(:\d{2})?$/.test(s)){const p=s.split(':').map(Number);return p.length===3?p[0]+p[1]/60+p[2]/3600:p[0]+p[1]/60;}
-  const n=numericValue(s); if(!Number.isFinite(n))return null;
-  const h=normHeader(header);
-  if(h.includes('millisecond'))return n/3600000;
-  if(h.includes('second'))return n/3600;
-  if(h.includes('minute'))return n/60;
-  if(n>100000)return n/3600000;
-  if(n>1000)return n/3600;
-  if(n>24)return n/60;
-  return n;
-}
-function whoopMapping(headers){
-  return {
-    date:findHeader(headers,['cycle start time','cycle start','date','start date','start']),
-    resting_hr:findHeader(headers,['resting heart rate','resting hr','rhr']),
-    hrv:findHeader(headers,['hrv rmssd milli','heart rate variability','hrv rmssd','hrv']),
-    respiratory_rate:findHeader(headers,['respiratory rate','respiration rate']),
-    spo2:findHeader(headers,['spo2 percentage','blood oxygen','spo2']),
-    temperature_c:findHeader(headers,['skin temp celsius','skin temperature celsius','skin temperature','skin temp']),
-    sleep_hours:findHeader(headers,['sleep duration hours','total sleep duration','sleep duration','total sleep','sleep hours']),
-    steps:findHeader(headers,['step count','steps'])
-  };
-}
-async function importWhoop(file){
-  const status=$('whoopStatus'),card=document.querySelector('.whoop-card');
-  status.textContent='Reading WHOOP export…';card.classList.remove('source-success','source-error');
+
+async function syncWhoop(){
+  setWhoopUI('syncing','Checking WHOOP…');
   try{
-    const text=await file.text(); const table=parseCSV(text);
-    if(table.length<2)throw new Error('The CSV has no data rows.');
-    const headers=table[0].map(x=>x.trim()); const mapping=whoopMapping(headers);
-    if(!mapping.date)throw new Error('Could not find a date/cycle-start column in this export.');
-    const metricKeys=Object.keys(mapping).filter(k=>k!=='date'&&mapping[k]);
-    if(!metricKeys.length)throw new Error('Could not recognize WHOOP RHR, HRV, sleep, respiratory rate, SpO₂, temperature, or steps columns.');
-    const records=[];
-    for(const cells of table.slice(1)){
-      const row=Object.fromEntries(headers.map((h,i)=>[h,cells[i]??'']));
-      const date=new Date(row[mapping.date]); if(!Number.isFinite(date.getTime()))continue;
-      const rec={date};
-      for(const key of metricKeys){
-        const raw=row[mapping[key]];
-        const val=key==='sleep_hours'?durationHours(raw,mapping[key]):numericValue(raw);
-        if(Number.isFinite(val))rec[key]=val;
-      }
-      if(Object.keys(rec).length>1)records.push(rec);
+    const response=await fetch('/api/whoop/data',{cache:'no-store'});
+    const data=await response.json().catch(()=>({}));
+    if(response.status===503||data.configured===false){
+      setWhoopUI('unconfigured','Add WHOOP developer credentials to this deployment.');return false;
     }
-    if(!records.length)throw new Error('No usable physiological rows were found.');
-    records.sort((a,b)=>a.date-b.date);
-    const result=importWearableHistory(PROFILE,records,'whoop_csv'); PROFILE=result.profile;
-    const latest=records[records.length-1];
-    for(const key of metricKeys){if(Number.isFinite(latest[key])&&$(`c_${key}`))$(`c_${key}`).value=Number(latest[key].toFixed(key==='steps'?0:2));}
-    SKIP_OBSERVE_ONCE=true; renderProfile(); render();
-    const labels={resting_hr:'RHR',hrv:'HRV',sleep_hours:'sleep',respiratory_rate:'respiratory rate',spo2:'SpO₂',temperature_c:'temperature',steps:'steps'};
-    status.textContent=`Imported ${result.imported} days · ${metricKeys.map(k=>labels[k]).join(', ')}`;
-    card.classList.add('source-success'); document.querySelector('.manual').open=false;
-  }catch(err){status.textContent=err.message||String(err);card.classList.add('source-error');}
+    if(response.status===401||data.connected===false){
+      setWhoopUI('disconnected','Not connected yet');return false;
+    }
+    if(!response.ok)throw new Error(data.error||`WHOOP sync failed (${response.status})`);
+    const records=Array.isArray(data.records)?data.records:[];
+    if(records.length){
+      const result=importWearableHistory(PROFILE,records,'whoop_api_v2');PROFILE=result.profile;
+      fillCurrentFromRecord(records[records.length-1]);SKIP_OBSERVE_ONCE=true;
+      renderProfile();render();
+      document.querySelector('.manual').open=false;
+      setWhoopUI('connected',`${records.length} recent WHOOP days synced automatically`);
+      $('syncTitle').textContent='WHOOP is feeding PulseLab';
+      $('syncCopy').textContent='Your recent WHOOP physiology has been backfilled. Each visit refreshes Recovery and Sleep data before the recommendation updates.';
+    }else{
+      setWhoopUI('connected','Connected · no scored Recovery/Sleep records found yet');
+    }
+    return true;
+  }catch(error){setWhoopUI('error',error.message||String(error));return false;}
+}
+
+async function disconnectWhoop(){
+  $('whoopDisconnectBtn').disabled=true;
+  try{await fetch('/api/whoop/logout',{method:'POST'});}catch(_){ }
+  $('whoopDisconnectBtn').disabled=false;setWhoopUI('disconnected','Disconnected');
+  $('syncTitle').textContent='Continuous sync';$('syncCopy').textContent='Connect WHOOP once and PulseLab will refresh your physiology automatically whenever you return.';
 }
 
 function loadExample(){PROFILE=seedDemoHistory(PROFILE);const v={b_resting_hr:58,c_resting_hr:69,b_hrv:56,c_hrv:37,b_sleep_hours:7.5,c_sleep_hours:5.9,b_steps:9200,c_steps:5100,b_temperature_c:36.5,c_temperature_c:37.1,b_spo2:98,c_spo2:96,b_resp:14,c_resp:17};const aliases={b_resp:'b_respiratory_rate',c_resp:'c_respiratory_rate'};for(const[k,x]of Object.entries(v)){const id=aliases[k]||k;if($(id))$(id).value=x;}$('persistence').value='3';$('lastBlood').value='150';$('age').value='32';$('sex').value='male';schedule();}
-function teachModel(){
-  if(!LAST_GLOBAL)return;
-  const panel=$('feedbackPanel').value, outcome=$('feedbackOutcome').value;
-  PROFILE=recordLabFeedback(PROFILE,panel,outcome,LAST_GLOBAL);
-  $('feedbackMessage').textContent=`Learned from this ${panel.replaceAll('_',' ')} result.`;
-  render();
+function teachModel(){if(!LAST_GLOBAL)return;const panel=$('feedbackPanel').value,outcome=$('feedbackOutcome').value;PROFILE=recordLabFeedback(PROFILE,panel,outcome,LAST_GLOBAL);$('feedbackMessage').textContent=`Learned from this ${panel.replaceAll('_',' ')} result.`;render();}
+function resetLearning(){PROFILE=clearProfile();$('feedbackMessage').textContent='Personal history cleared; back to the population prior.';renderProfile();schedule();}
+function showOAuthResult(){
+  const code=new URLSearchParams(location.search).get('whoop');if(!code)return;
+  const messages={connected:'WHOOP authorized. Syncing your history…',denied:'WHOOP authorization was cancelled.',state_error:'WHOOP authorization could not be verified. Try again.',error:'WHOOP authorization failed. Try again.'};
+  if(messages[code])$('whoopStatus').textContent=messages[code];
+  history.replaceState({},'',location.pathname+location.hash);
 }
-function resetLearning(){PROFILE=clearProfile();$('feedbackMessage').textContent='Personal history cleared; back to the population prior.';$('whoopStatus').textContent='No file imported yet';document.querySelector('.whoop-card').classList.remove('source-success','source-error');renderProfile();schedule();}
+
 async function boot(){
-  makeRows();renderProfile();
+  makeRows();renderProfile();showOAuthResult();
   document.addEventListener('input',schedule);document.addEventListener('change',schedule);
   $('sampleBtn').addEventListener('click',loadExample);$('feedbackBtn').addEventListener('click',teachModel);$('resetProfileBtn').addEventListener('click',resetLearning);
-  $('whoopImportBtn').addEventListener('click',()=>$('whoopFile').click());
-  $('whoopFile').addEventListener('change',e=>{const f=e.target.files?.[0];if(f)importWhoop(f);});
-  try{const r=await fetch('./model/bloodneed-model.json',{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);MODEL=await r.json();$('modelState').textContent=`${MODEL.name} ${MODEL.version} loaded`;render();}
-  catch(e){$('modelState').textContent='Trained model artifact unavailable';$('modelState').classList.add('bad');$('emptyState').innerHTML='<h2>Model artifact missing</h2><p>Deploy the committed <code>bloodneed-model.json</code> with the frontend.</p>';}
+  $('whoopConnectBtn').addEventListener('click',()=>{location.href='/api/whoop/auth';});$('whoopDisconnectBtn').addEventListener('click',disconnectWhoop);
+  try{
+    const r=await fetch('./model/bloodneed-model.json',{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    MODEL=await r.json();$('modelState').textContent=`${MODEL.name} ${MODEL.version} loaded`;render();await syncWhoop();
+  }catch(e){$('modelState').textContent='Trained model artifact unavailable';$('modelState').classList.add('bad');$('emptyState').innerHTML='<h2>Model artifact missing</h2><p>Deploy the committed <code>bloodneed-model.json</code> with the frontend.</p>';}
 }
 boot();
