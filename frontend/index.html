@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="population-simple.css">
   <link rel="stylesheet" href="measurements.css">
   <link rel="stylesheet" href="forecast.css">
+  <link rel="stylesheet" href="csv-import.css">
 </head>
 <body>
 <main class="page app-page">
@@ -23,58 +24,96 @@
       <button class="nav-tab" data-tab="population" type="button">Population</button>
       <button class="nav-tab" data-tab="assistant" type="button">Ask PulseLab</button>
     </nav>
-    <div class="live"><i></i><span id="modelState">loading model…</span></div>
+    <div class="live"><i></i><span id="modelState">loading…</span></div>
   </header>
 
   <section class="tab-panel active" id="tab-live" data-tab-panel="live">
-    <div class="tab-hero"><div><div class="eyebrow">Live data</div><h1>What is your body doing right now?</h1><p>Connect WHOOP or load the demo. PulseLab learns what is normal for you and watches for changes that are worth measuring.</p></div></div>
+    <div class="tab-hero compact-copy"><div><div class="eyebrow">Live data</div><h1>Something changed.</h1></div></div>
 
-    <section class="telemetry-shell" aria-label="Live physiology demo stream">
-      <div class="telemetry-head"><div><div class="eyebrow">Live physiology</div><h2>Right now</h2></div><div id="telemetrySource" class="telemetry-badge">SYNTHETIC DEMO STREAM</div></div>
-      <div class="telemetry-grid"><div class="hr-panel"><div><div class="hr-label">Heart rate now</div><div class="hr-value"><strong id="hrNow">64</strong><span>bpm</span></div><div id="hrRange" class="hr-range">—</div></div><div class="hr-range">Updates every second</div></div><div class="chart-panel"><div class="chart-meta"><span>Heart rate · rolling window</span><span id="telemetryClock">—</span></div><svg class="hr-chart" viewBox="0 0 700 160" preserveAspectRatio="none" role="img" aria-label="Synthetic rolling heart-rate trace"><line class="hr-grid" x1="0" y1="40" x2="700" y2="40"></line><line class="hr-grid" x1="0" y1="80" x2="700" y2="80"></line><line class="hr-grid" x1="0" y1="120" x2="700" y2="120"></line><path id="hrArea" class="hr-area"></path><path id="hrTrace" class="hr-trace"></path></svg></div></div>
-      <div class="telemetry-metrics"><div class="telemetry-metric"><span>HRV</span><strong id="telemetryHrv">54 ms</strong></div><div class="telemetry-metric"><span>Breathing rate</span><strong id="telemetryResp">14.5 /min</strong></div><div class="telemetry-metric"><span>Blood oxygen</span><strong id="telemetrySpo2">98.0%</strong></div><div class="telemetry-metric"><span>Skin temperature</span><strong id="telemetryTemp">36.60 °C</strong></div></div>
-      <div class="telemetry-foot"><span class="synthetic-note"><strong>Demo:</strong> the moving trace is synthetic. Connected WHOOP values anchor the stream.</span><span>The model updates underneath.</span></div>
+    <section id="liveAlertCard" class="card live-alert waiting">
+      <div>
+        <div id="liveAlertKicker" class="alert-kicker">WAITING FOR YOUR HISTORY</div>
+        <h2 id="liveAlertTitle">Upload your WHOOP export.</h2>
+        <p id="liveAlertBody">Then PulseLab can compare this live stream with what is normal for you.</p>
+      </div>
+      <button id="liveAlertAction" class="alert-action hidden" data-go-tab="testing" type="button">See the test</button>
+      <div id="liveAlertMetrics" class="alert-metrics"></div>
     </section>
 
-    <div class="live-data-grid">
-      <section class="card input-card data-card">
-        <div class="step-head"><span class="step-number">1</span><div><div class="eyebrow">Data source</div><h2>Connect your WHOOP.</h2></div></div>
-        <section class="source-card whoop-card"><div class="source-icon">W</div><div class="source-copy"><div class="source-title">WHOOP <span class="recommended">Recommended</span></div><p id="whoopDescription">Authorize once. PulseLab securely pulls recent Recovery and Sleep data and keeps your baseline up to date.</p><div class="source-actions"><button id="whoopConnectBtn" class="primary-source">Connect WHOOP</button><button id="whoopDisconnectBtn" class="ghost hidden">Disconnect</button><span id="whoopStatus" class="source-status">Checking connection…</span></div><small>Your WHOOP password and client secret never enter the browser.</small></div></section>
-        <div class="sync-strip"><span class="pulse"></span><div><strong id="syncTitle">Continuous sync</strong><p id="syncCopy">PulseLab backfills recent history, learns your baseline, and uses the newest WHOOP measurements as today’s state.</p></div></div>
-        <div class="demo-row"><button id="sampleBtn" class="ghost">Load alarming demo</button><span>Loads a clearly abnormal day so the full testing flow is easy to see.</span></div>
-        <section class="profile-box"><div class="profile-head"><div><div class="eyebrow">How well PulseLab knows you</div><h3 id="profileStage">Population prior</h3></div><strong id="profileConfidence">0% personalized</strong></div><div class="profile-track"><i id="profileFill"></i></div><div class="profile-stats"><span id="profileDays">0 wearable days</span><span id="profileLabs">0 blood results</span></div></section>
-      </section>
+    <section class="telemetry-shell is-alert" aria-label="Simulated live physiology">
+      <div class="telemetry-head">
+        <div><div class="eyebrow">Simulated live data</div><h2>Right now</h2></div>
+        <div id="telemetrySource" class="telemetry-badge">SIMULATED LIVE</div>
+      </div>
+      <div class="telemetry-grid">
+        <div class="hr-panel">
+          <div><div class="hr-label">Heart rate now</div><div class="hr-value"><strong id="hrNow">82</strong><span>bpm</span></div><div id="hrRange" class="hr-range">—</div></div>
+          <div class="hr-range">updates live</div>
+        </div>
+        <div class="chart-panel">
+          <div class="chart-meta"><span>Heart rate</span><span id="telemetryClock">—</span></div>
+          <svg class="hr-chart" viewBox="0 0 700 160" preserveAspectRatio="none" role="img" aria-label="Simulated rolling heart-rate trace">
+            <line class="hr-grid" x1="0" y1="40" x2="700" y2="40"></line>
+            <line class="hr-grid" x1="0" y1="80" x2="700" y2="80"></line>
+            <line class="hr-grid" x1="0" y1="120" x2="700" y2="120"></line>
+            <path id="hrArea" class="hr-area"></path><path id="hrTrace" class="hr-trace"></path>
+          </svg>
+        </div>
+      </div>
+      <div class="telemetry-metrics">
+        <div class="telemetry-metric"><span>HRV</span><strong id="telemetryHrv">24 ms</strong></div>
+        <div class="telemetry-metric"><span>Breathing</span><strong id="telemetryResp">20.8 /min</strong></div>
+        <div class="telemetry-metric"><span>Blood oxygen</span><strong id="telemetrySpo2">92.8%</strong></div>
+        <div class="telemetry-metric"><span>Skin temp</span><strong id="telemetryTemp">34.65 °C</strong></div>
+      </div>
+      <div class="telemetry-foot"><span><strong>Simulated:</strong> only this live stream is fake.</span><span>Your uploaded history stays separate.</span></div>
+    </section>
 
-      <section class="card data-card controls-card">
-        <div class="eyebrow">Manual / demo controls</div><h2>Enter today’s numbers</h2>
-        <details class="manual"><summary><div><strong>Enter values manually</strong><span>Useful for demos or if WHOOP is not connected.</span></div></summary><div class="manual-body"><div class="manual-note"><strong>Today is enough to start.</strong> Your normal baseline gets learned over time.</div><div class="metric-head"><span>Metric</span><span>Your usual</span><span>Today</span></div><div id="metricRows"></div><div class="small-grid"><label>Change has lasted<select id="persistence"><option value="1">1 day</option><option value="2">2 days</option><option value="3" selected>3 days</option><option value="5">5 days</option><option value="7">7+ days</option></select></label><label>Last blood test<input id="lastBlood" type="number" min="0" max="3650" placeholder="days ago"></label><label>Age <span class="optional">optional</span><input id="age" type="number" min="18" max="120"></label><label>Sex <span class="optional">optional</span><select id="sex"><option value="">Not provided</option><option value="female">female</option><option value="male">male</option></select></label></div></div></details>
-        <details class="feedback"><summary>Add a real blood result</summary><p>This lets the prototype learn from what happened after a test.</p><div class="feedback-grid"><select id="feedbackPanel"><option value="glycemic">Hemoglobin A1c</option><option value="cbc">CBC</option><option value="metabolic">CMP</option><option value="lipid">Lipid panel</option><option value="any_abnormal">Any abnormality</option></select><select id="feedbackOutcome"><option value="abnormal">Abnormal</option><option value="normal">Normal</option></select><button id="feedbackBtn" class="primary-small">Record result</button></div><div id="feedbackMessage" class="feedback-message"></div></details>
-        <button id="resetProfileBtn" class="reset-link">Clear learned profile</button>
-      </section>
-    </div>
+    <section class="card import-card">
+      <div>
+        <div class="eyebrow">Your WHOOP history</div>
+        <h2>Upload <code>physiological_cycles.csv</code></h2>
+        <p>WHOOP → Data Export → choose the physiological cycles CSV.</p>
+      </div>
+      <label class="csv-button" for="whoopCsvInput">Choose CSV</label>
+      <input id="whoopCsvInput" type="file" accept=".csv,text/csv" hidden>
+      <div id="csvImportStatus" class="csv-status">No history loaded.</div>
+      <div class="profile-mini">
+        <span id="profileStage">No baseline yet</span>
+        <strong id="profileDays">0 days</strong>
+        <span id="profileConfidence" class="hidden">0%</span>
+        <span id="profileLabs" class="hidden">0 blood results</span>
+      </div>
+    </section>
   </section>
 
   <section class="tab-panel" id="tab-measurements" data-tab-panel="measurements">
-    <div class="tab-hero"><div><div class="eyebrow">Measurements</div><h1>Your data over time.</h1><p>Pick a measurement, move through your history, and see exactly when your normal pattern started to change.</p></div></div>
+    <div class="tab-hero compact-copy"><div><div class="eyebrow">Measurements</div><h1>Your history.</h1></div></div>
     <div id="measurementsContent"></div>
   </section>
 
   <section class="tab-panel" id="tab-testing" data-tab-panel="testing">
-    <div class="tab-hero"><div><div class="eyebrow">Testing</div><h1>What should you measure next?</h1><p>One recommendation, one reason, and a clear time window.</p></div></div>
+    <div class="tab-hero compact-copy"><div><div class="eyebrow">Testing</div><h1>What to do next.</h1></div></div>
     <div id="testingContent"></div>
   </section>
 
   <section class="tab-panel" id="tab-population" data-tab-panel="population">
-    <div class="tab-hero"><div><div class="eyebrow">Population</div><h1>Who has looked like this before?</h1><p>Drag and zoom through real participants from multiple published studies. Click anyone to see what actually happened and the real measurements the study reported.</p></div></div>
+    <div class="tab-hero compact-copy"><div><div class="eyebrow">Population</div><h1>People who looked like this.</h1><p>Drag the map. Click a person to see what actually happened.</p></div></div>
     <div id="populationContent"></div>
   </section>
 
   <section class="tab-panel" id="tab-assistant" data-tab-panel="assistant">
-    <div class="tab-hero"><div><div class="eyebrow">Ask PulseLab</div><h1>Ask about your result.</h1><p>Ask why a test was suggested, what changed, or what happened to a similar study participant.</p></div></div>
+    <div class="tab-hero compact-copy"><div><div class="eyebrow">Ask PulseLab</div><h1>Ask a question.</h1></div></div>
     <div id="assistantContent" class="assistant-shell"></div>
   </section>
 
   <div class="hidden" aria-hidden="true">
+    <div id="metricRows"></div>
+    <select id="persistence"><option value="5" selected>5</option></select>
+    <input id="lastBlood" value="240">
+    <input id="age" value="32">
+    <select id="sex"><option value="male" selected>male</option></select>
+
     <div id="emptyState"></div>
     <div id="resultView">
       <span id="recommendation"></span><span id="score">0</span><span id="headline"></span><span id="summary"></span>
@@ -83,10 +122,9 @@
     </div>
   </div>
 
-  <footer>Research prototype. PulseLab can suggest what may be worth measuring; it is not a diagnosis or medical order.</footer>
+  <footer>Prototype. It can suggest a test; it cannot diagnose you.</footer>
 </main>
 <script type="module" src="app.js"></script>
-<script type="module" src="demo-scenario.js"></script>
 <script type="module" src="telemetry.js"></script>
 <script type="module" src="tabs.js"></script>
 <script type="module" src="measurements.js"></script>
