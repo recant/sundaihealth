@@ -1,6 +1,6 @@
 import { runPanelModel } from './model-runtime.js';
 import {
-  loadProfile, clearProfile, observeToday, getPersonalBaseline,
+  loadProfile, clearProfile, observeToday, importWearableHistory, getPersonalBaseline,
   personalizeProbabilities, recordLabFeedback, personalizationStatus, seedDemoHistory
 } from './personalization.js';
 
@@ -12,7 +12,7 @@ const METRICS=[
   ['cgm_cv','CGM variability (CV)','%']
 ];
 const $=id=>document.getElementById(id);
-let MODEL=null, timer=null, PROFILE=loadProfile(), LAST_GLOBAL=null;
+let MODEL=null, timer=null, PROFILE=loadProfile(), LAST_GLOBAL=null, SKIP_OBSERVE_ONCE=false;
 
 function makeRows(){
   $('metricRows').innerHTML=METRICS.map(([k,l,u])=>`<div class="metric-row">
@@ -93,7 +93,10 @@ function renderProfile(){
 function render(){
   if(!MODEL)return;
   const manual=map('baseline'),c=map('current');
-  if(Object.keys(c).length) PROFILE=observeToday(PROFILE,c);
+  if(Object.keys(c).length){
+    if(SKIP_OBSERVE_ONCE) SKIP_OBSERVE_ONCE=false;
+    else PROFILE=observeToday(PROFILE,c);
+  }
   renderProfile();
   const learned=getPersonalBaseline(PROFILE,manual,c);
   const b=learned.baseline;
@@ -133,6 +136,90 @@ function render(){
   $('modelDrivers').textContent=attr.length?`Global model drivers: ${attr.map(a=>`${a.key.replaceAll('_',' ')} ${a.effect>=0?'+':''}${Math.round(a.effect*100)} pts`).join(' · ')}${offsets.length?` · Personal calibration: ${offsets.join(', ')}`:''}`:'Model drivers will appear when enough compatible features are supplied.';
 }
 function schedule(){clearTimeout(timer);timer=setTimeout(render,120);}
+
+// WHOOP CSV import -----------------------------------------------------------
+function parseCSV(text){
+  const rows=[]; let row=[],field='',quoted=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i],next=text[i+1];
+    if(ch==='"'){
+      if(quoted&&next==='"'){field+='"';i++;} else quoted=!quoted;
+    } else if(ch===','&&!quoted){row.push(field);field='';}
+    else if((ch==='\n'||ch==='\r')&&!quoted){
+      if(ch==='\r'&&next==='\n')i++;
+      row.push(field);field=''; if(row.some(x=>x.trim()!==''))rows.push(row); row=[];
+    } else field+=ch;
+  }
+  row.push(field); if(row.some(x=>x.trim()!==''))rows.push(row);
+  return rows;
+}
+function normHeader(s){return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
+function findHeader(headers,aliases){
+  const hn=headers.map(h=>normHeader(h));
+  for(const alias of aliases){const a=normHeader(alias);const exact=hn.indexOf(a);if(exact>=0)return headers[exact];}
+  for(const alias of aliases){const a=normHeader(alias);const idx=hn.findIndex(h=>h.includes(a)||a.includes(h));if(idx>=0)return headers[idx];}
+  return null;
+}
+function numericValue(v){const n=Number(String(v??'').replace(/[%,$]/g,'').trim());return Number.isFinite(n)?n:null;}
+function durationHours(v,header=''){
+  const s=String(v??'').trim(); if(!s)return null;
+  if(/^\d{1,2}:\d{2}(:\d{2})?$/.test(s)){const p=s.split(':').map(Number);return p.length===3?p[0]+p[1]/60+p[2]/3600:p[0]+p[1]/60;}
+  const n=numericValue(s); if(!Number.isFinite(n))return null;
+  const h=normHeader(header);
+  if(h.includes('millisecond'))return n/3600000;
+  if(h.includes('second'))return n/3600;
+  if(h.includes('minute'))return n/60;
+  if(n>100000)return n/3600000;
+  if(n>1000)return n/3600;
+  if(n>24)return n/60;
+  return n;
+}
+function whoopMapping(headers){
+  return {
+    date:findHeader(headers,['cycle start time','cycle start','date','start date','start']),
+    resting_hr:findHeader(headers,['resting heart rate','resting hr','rhr']),
+    hrv:findHeader(headers,['hrv rmssd milli','heart rate variability','hrv rmssd','hrv']),
+    respiratory_rate:findHeader(headers,['respiratory rate','respiration rate']),
+    spo2:findHeader(headers,['spo2 percentage','blood oxygen','spo2']),
+    temperature_c:findHeader(headers,['skin temp celsius','skin temperature celsius','skin temperature','skin temp']),
+    sleep_hours:findHeader(headers,['sleep duration hours','total sleep duration','sleep duration','total sleep','sleep hours']),
+    steps:findHeader(headers,['step count','steps'])
+  };
+}
+async function importWhoop(file){
+  const status=$('whoopStatus'),card=document.querySelector('.whoop-card');
+  status.textContent='Reading WHOOP export…';card.classList.remove('source-success','source-error');
+  try{
+    const text=await file.text(); const table=parseCSV(text);
+    if(table.length<2)throw new Error('The CSV has no data rows.');
+    const headers=table[0].map(x=>x.trim()); const mapping=whoopMapping(headers);
+    if(!mapping.date)throw new Error('Could not find a date/cycle-start column in this export.');
+    const metricKeys=Object.keys(mapping).filter(k=>k!=='date'&&mapping[k]);
+    if(!metricKeys.length)throw new Error('Could not recognize WHOOP RHR, HRV, sleep, respiratory rate, SpO₂, temperature, or steps columns.');
+    const records=[];
+    for(const cells of table.slice(1)){
+      const row=Object.fromEntries(headers.map((h,i)=>[h,cells[i]??'']));
+      const date=new Date(row[mapping.date]); if(!Number.isFinite(date.getTime()))continue;
+      const rec={date};
+      for(const key of metricKeys){
+        const raw=row[mapping[key]];
+        const val=key==='sleep_hours'?durationHours(raw,mapping[key]):numericValue(raw);
+        if(Number.isFinite(val))rec[key]=val;
+      }
+      if(Object.keys(rec).length>1)records.push(rec);
+    }
+    if(!records.length)throw new Error('No usable physiological rows were found.');
+    records.sort((a,b)=>a.date-b.date);
+    const result=importWearableHistory(PROFILE,records,'whoop_csv'); PROFILE=result.profile;
+    const latest=records[records.length-1];
+    for(const key of metricKeys){if(Number.isFinite(latest[key])&&$(`c_${key}`))$(`c_${key}`).value=Number(latest[key].toFixed(key==='steps'?0:2));}
+    SKIP_OBSERVE_ONCE=true; renderProfile(); render();
+    const labels={resting_hr:'RHR',hrv:'HRV',sleep_hours:'sleep',respiratory_rate:'respiratory rate',spo2:'SpO₂',temperature_c:'temperature',steps:'steps'};
+    status.textContent=`Imported ${result.imported} days · ${metricKeys.map(k=>labels[k]).join(', ')}`;
+    card.classList.add('source-success'); document.querySelector('.manual').open=false;
+  }catch(err){status.textContent=err.message||String(err);card.classList.add('source-error');}
+}
+
 function loadExample(){PROFILE=seedDemoHistory(PROFILE);const v={b_resting_hr:58,c_resting_hr:69,b_hrv:56,c_hrv:37,b_sleep_hours:7.5,c_sleep_hours:5.9,b_steps:9200,c_steps:5100,b_temperature_c:36.5,c_temperature_c:37.1,b_spo2:98,c_spo2:96,b_resp:14,c_resp:17};const aliases={b_resp:'b_respiratory_rate',c_resp:'c_respiratory_rate'};for(const[k,x]of Object.entries(v)){const id=aliases[k]||k;if($(id))$(id).value=x;}$('persistence').value='3';$('lastBlood').value='150';$('age').value='32';$('sex').value='male';schedule();}
 function teachModel(){
   if(!LAST_GLOBAL)return;
@@ -141,11 +228,13 @@ function teachModel(){
   $('feedbackMessage').textContent=`Learned from this ${panel.replaceAll('_',' ')} result.`;
   render();
 }
-function resetLearning(){PROFILE=clearProfile();$('feedbackMessage').textContent='Personal history cleared; back to the population prior.';renderProfile();schedule();}
+function resetLearning(){PROFILE=clearProfile();$('feedbackMessage').textContent='Personal history cleared; back to the population prior.';$('whoopStatus').textContent='No file imported yet';document.querySelector('.whoop-card').classList.remove('source-success','source-error');renderProfile();schedule();}
 async function boot(){
   makeRows();renderProfile();
   document.addEventListener('input',schedule);document.addEventListener('change',schedule);
   $('sampleBtn').addEventListener('click',loadExample);$('feedbackBtn').addEventListener('click',teachModel);$('resetProfileBtn').addEventListener('click',resetLearning);
+  $('whoopImportBtn').addEventListener('click',()=>$('whoopFile').click());
+  $('whoopFile').addEventListener('change',e=>{const f=e.target.files?.[0];if(f)importWhoop(f);});
   try{const r=await fetch('./model/bloodneed-model.json',{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);MODEL=await r.json();$('modelState').textContent=`${MODEL.name} ${MODEL.version} loaded`;render();}
   catch(e){$('modelState').textContent='Trained model artifact unavailable';$('modelState').classList.add('bad');$('emptyState').innerHTML='<h2>Model artifact missing</h2><p>Deploy the committed <code>bloodneed-model.json</code> with the frontend.</p>';}
 }
