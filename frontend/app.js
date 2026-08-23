@@ -1,4 +1,8 @@
 import { runPanelModel } from './model-runtime.js';
+import {
+  loadProfile, clearProfile, observeToday, getPersonalBaseline,
+  personalizeProbabilities, recordLabFeedback, personalizationStatus, seedDemoHistory
+} from './personalization.js';
 
 const METRICS=[
   ['resting_hr','Resting heart rate','bpm'],['hrv','HRV (RMSSD)','ms'],
@@ -8,13 +12,13 @@ const METRICS=[
   ['cgm_cv','CGM variability (CV)','%']
 ];
 const $=id=>document.getElementById(id);
-let MODEL=null, timer=null;
+let MODEL=null, timer=null, PROFILE=loadProfile(), LAST_GLOBAL=null;
 
 function makeRows(){
   $('metricRows').innerHTML=METRICS.map(([k,l,u])=>`<div class="metric-row">
     <label><strong>${l}</strong><small>${u}</small></label>
-    <input id="b_${k}" data-kind="baseline" data-key="${k}" type="number" step="any" placeholder="baseline" />
-    <input id="c_${k}" data-kind="current" data-key="${k}" type="number" step="any" placeholder="current" />
+    <input id="b_${k}" data-kind="baseline" data-key="${k}" type="number" step="any" placeholder="optional" />
+    <input id="c_${k}" data-kind="current" data-key="${k}" type="number" step="any" placeholder="today" />
   </div>`).join('');
 }
 function num(id){const v=$(id)?.value?.trim(); return v===''||v==null?null:Number(v);}
@@ -32,7 +36,7 @@ function modelFeatures(b,c){
 }
 
 const SCALE={resting_hr:.08,hrv:.18,sleep_hours:.18,steps:.35,temperature_c:.5,spo2:.025,respiratory_rate:.18,cgm_mean:.12,cgm_cv:.25};
-function anomalyDetails(b,c){
+function anomalyDetails(b,c,stats={}){
   const rows=[];
   for(const [key,label,unit] of METRICS){
     if(!Number.isFinite(b[key])||!Number.isFinite(c[key])) continue;
@@ -40,8 +44,12 @@ function anomalyDetails(b,c){
     if(key==='temperature_c'){d=c[key]-b[key];scale=SCALE[key];}
     else if(key==='spo2'){d=(c[key]-b[key])/100;scale=SCALE[key];}
     else {d=pct(c[key],b[key]);scale=SCALE[key];}
-    const z=Math.abs(d)/(scale||1);
-    rows.push({key,label,unit,baseline:b[key],current:c[key],delta:d,z});
+    const learnedScale=Number.isFinite(stats?.[key]?.mad)&&stats[key].mad>0
+      ? (key==='temperature_c'?stats[key].mad:key==='spo2'?stats[key].mad/100:stats[key].mad/Math.max(Math.abs(b[key]),1e-9))
+      : null;
+    const denominator=Math.max(scale||1, learnedScale||0);
+    const z=Math.abs(d)/(denominator||1);
+    rows.push({key,label,unit,baseline:b[key],current:c[key],delta:d,z,personalDays:stats?.[key]?.n||0});
   }
   const strength=rows.length?1-Math.exp(-rows.reduce((s,r)=>s+Math.min(r.z,3),0)/(rows.length*1.2)):0;
   return {strength,rows:rows.sort((a,b)=>b.z-a.z)};
@@ -73,14 +81,29 @@ function testCards(probs, anomaly){
 function label(score){if(score>=.62)return['CONSIDER TESTING SOON','high']; if(score>=.4)return['WATCH THE TREND','watch']; return['NO EVENT-TRIGGERED TEST','low'];}
 function fmtDelta(r){if(r.key==='temperature_c')return `${r.delta>=0?'+':''}${r.delta.toFixed(1)} °C`; if(r.key==='spo2')return `${r.delta>=0?'+':''}${(r.delta*100).toFixed(1)} points`;return `${r.delta>=0?'+':''}${(r.delta*100).toFixed(0)}%`;}
 
+function renderProfile(){
+  const s=personalizationStatus(PROFILE);
+  $('profileStage').textContent=s.stage;
+  $('profileConfidence').textContent=`${s.confidence}% personalized`;
+  $('profileDays').textContent=`${s.dayCount} wearable day${s.dayCount===1?'':'s'}`;
+  $('profileLabs').textContent=`${s.labCount} blood result${s.labCount===1?'':'s'}`;
+  $('profileFill').style.width=`${s.confidence}%`;
+}
+
 function render(){
   if(!MODEL)return;
-  const b=map('baseline'),c=map('current');
-  const entered=Object.keys(b).some(k=>Number.isFinite(c[k]));
+  const manual=map('baseline'),c=map('current');
+  if(Object.keys(c).length) PROFILE=observeToday(PROFILE,c);
+  renderProfile();
+  const learned=getPersonalBaseline(PROFILE,manual,c);
+  const b=learned.baseline;
+  const entered=Object.keys(c).some(k=>Number.isFinite(c[k]));
   if(!entered){$('emptyState').classList.remove('hidden');$('resultView').classList.add('hidden');return;}
   const features=modelFeatures(b,c);
-  const probs=runPanelModel(MODEL,features);
-  const an=anomalyDetails(b,c);
+  const globalProbs=runPanelModel(MODEL,features);
+  LAST_GLOBAL=globalProbs;
+  const probs=personalizeProbabilities(globalProbs,PROFILE);
+  const an=anomalyDetails(b,c,learned.stats);
   const persistence=Number($('persistence').value||1);
   const persistenceBoost=clamp((persistence-1)/6)*.08;
   const since=num('lastBlood');
@@ -88,31 +111,42 @@ function render(){
   const score=clamp(.68*probs.any_abnormal+.32*an.strength+persistenceBoost+recencyBoost);
   const [status,level]=label(score);
   const tests=testCards(probs,an);
+  const pstat=personalizationStatus(PROFILE);
 
   $('emptyState').classList.add('hidden');$('resultView').classList.remove('hidden');
   $('recommendation').textContent=status;$('recommendation').dataset.level=level;
   $('score').textContent=Math.round(score*100);
   $('headline').textContent=score>=.62?'Your recent wearable pattern increases the expected yield of blood testing.':score>=.4?'There is enough drift to keep watching closely.':'The model does not see a strong event-trigger for testing right now.';
-  $('summary').textContent=`BloodNeedNet estimates a ${Math.round(probs.any_abnormal*100)}% screening-yield probability from the trained wearable model; your personal physiology-drift score is ${Math.round(an.strength*100)}%.`;
-  $('modelUsed').textContent=`${MODEL.name} ${MODEL.version} · ${MODEL.panel_model.training_participants} training participants`;
+  $('summary').textContent=`Population model: ${Math.round(globalProbs.any_abnormal*100)}% expected screening yield. Personalized model: ${Math.round(probs.any_abnormal*100)}%. Physiology drift from your learned baseline: ${Math.round(an.strength*100)}%.`;
+  $('modelUsed').textContent=`${MODEL.name} ${MODEL.version} · ${pstat.stage}`;
   $('generatedAt').textContent='updates automatically';
 
   const top=an.rows.slice(0,4);
-  $('reasons').innerHTML=top.length?top.map(r=>`<div class="reason"><div class="signal-name">${r.label}</div><div><strong>${r.baseline} → ${r.current} ${r.unit} (${fmtDelta(r)})</strong><p>${r.z>=1.5?'Large':'Moderate'} deviation from your own baseline; this raises the event-trigger signal.</p></div></div>`).join(''):'<p class="muted">Add baseline and current wearable values to see the drivers.</p>';
+  $('reasons').innerHTML=top.length?top.map(r=>`<div class="reason"><div class="signal-name">${r.label}</div><div><strong>${Number(r.baseline).toFixed(1)} → ${r.current} ${r.unit} (${fmtDelta(r)})</strong><p>${r.z>=1.5?'Large':'Moderate'} deviation from ${r.personalDays>=3?`your learned ${r.personalDays}-day history`:'the current fallback baseline'}.</p></div></div>`).join(''):'<p class="muted">Add current wearable values to see the drivers.</p>';
 
   const shown=tests.filter((t,i)=>t.p>=.38||i===0).slice(0,4);
-  $('tests').innerHTML=shown.map(t=>`<article class="test-item"><div class="test-top"><h3>${t.name}</h3><span class="prob">${Math.round(t.p*100)}%</span></div><p>${t.description} The trained head estimates this panel is ${Math.round(t.p*100)}% likely to contain the target pattern used during training.</p></article>`).join('');
+  $('tests').innerHTML=shown.map(t=>`<article class="test-item"><div class="test-top"><h3>${t.name}</h3><span class="prob">${Math.round(t.p*100)}%</span></div><p>${t.description} Current personalized estimate: ${Math.round(t.p*100)}%.</p></article>`).join('');
   $('panelBars').innerHTML=tests.map(t=>`<div class="bar-row"><span>${t.name}</span><div class="bar"><i style="width:${Math.round(t.p*100)}%"></i></div><b>${Math.round(t.p*100)}%</b></div>`).join('');
 
-  const attr=finiteDiffAttribution(features,probs.any_abnormal).slice(0,3);
-  $('modelDrivers').textContent=attr.length?`Learned model drivers: ${attr.map(a=>`${a.key.replaceAll('_',' ')} ${a.effect>=0?'+':''}${Math.round(a.effect*100)} pts`).join(' · ')}`:'Learned model drivers will appear when enough compatible features are supplied.';
+  const attr=finiteDiffAttribution(features,globalProbs.any_abnormal).slice(0,3);
+  const offsets=['glycemic','cbc','metabolic','lipid'].filter(k=>(PROFILE.panel_feedback_counts?.[k]||0)>0).map(k=>`${k} n=${PROFILE.panel_feedback_counts[k]}`);
+  $('modelDrivers').textContent=attr.length?`Global model drivers: ${attr.map(a=>`${a.key.replaceAll('_',' ')} ${a.effect>=0?'+':''}${Math.round(a.effect*100)} pts`).join(' · ')}${offsets.length?` · Personal calibration: ${offsets.join(', ')}`:''}`:'Model drivers will appear when enough compatible features are supplied.';
 }
 function schedule(){clearTimeout(timer);timer=setTimeout(render,120);}
-function loadExample(){const v={b_resting_hr:58,c_resting_hr:69,b_hrv:56,c_hrv:37,b_sleep_hours:7.5,c_sleep_hours:5.9,b_steps:9200,c_steps:5100,b_temperature_c:36.5,c_temperature_c:37.1,b_spo2:98,c_spo2:96,b_respiratory_rate:14,c_respiratory_rate:17};for(const[k,x]of Object.entries(v))$(k).value=x;$('persistence').value='3';$('lastBlood').value='150';$('age').value='32';$('sex').value='male';schedule();}
+function loadExample(){PROFILE=seedDemoHistory(PROFILE);const v={b_resting_hr:58,c_resting_hr:69,b_hrv:56,c_hrv:37,b_sleep_hours:7.5,c_sleep_hours:5.9,b_steps:9200,c_steps:5100,b_temperature_c:36.5,c_temperature_c:37.1,b_spo2:98,c_spo2:96,b_resp:14,c_resp:17};const aliases={b_resp:'b_respiratory_rate',c_resp:'c_respiratory_rate'};for(const[k,x]of Object.entries(v)){const id=aliases[k]||k;if($(id))$(id).value=x;}$('persistence').value='3';$('lastBlood').value='150';$('age').value='32';$('sex').value='male';schedule();}
+function teachModel(){
+  if(!LAST_GLOBAL)return;
+  const panel=$('feedbackPanel').value, outcome=$('feedbackOutcome').value;
+  PROFILE=recordLabFeedback(PROFILE,panel,outcome,LAST_GLOBAL);
+  $('feedbackMessage').textContent=`Learned from this ${panel.replaceAll('_',' ')} result.`;
+  render();
+}
+function resetLearning(){PROFILE=clearProfile();$('feedbackMessage').textContent='Personal history cleared; back to the population prior.';renderProfile();schedule();}
 async function boot(){
-  makeRows();
-  document.addEventListener('input',schedule);document.addEventListener('change',schedule);$('sampleBtn').addEventListener('click',loadExample);
+  makeRows();renderProfile();
+  document.addEventListener('input',schedule);document.addEventListener('change',schedule);
+  $('sampleBtn').addEventListener('click',loadExample);$('feedbackBtn').addEventListener('click',teachModel);$('resetProfileBtn').addEventListener('click',resetLearning);
   try{const r=await fetch('./model/bloodneed-model.json',{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);MODEL=await r.json();$('modelState').textContent=`${MODEL.name} ${MODEL.version} loaded`;render();}
-  catch(e){$('modelState').textContent='Training model artifact is not available yet';$('modelState').classList.add('bad');$('emptyState').innerHTML='<h2>Model training in progress</h2><p>The app will become live as soon as <code>bloodneed-model.json</code> is produced by the training workflow.</p>';}
+  catch(e){$('modelState').textContent='Trained model artifact unavailable';$('modelState').classList.add('bad');$('emptyState').innerHTML='<h2>Model artifact missing</h2><p>Deploy the committed <code>bloodneed-model.json</code> with the frontend.</p>';}
 }
 boot();
