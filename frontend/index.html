@@ -3,90 +3,96 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>PulseLab — adaptive blood testing</title>
+  <title>PulseLab AI — adaptive blood testing</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">P</span><span>PulseLab</span></div>
-      <nav>
-        <button class="nav-item active"><span>◉</span>Overview</button>
-        <button class="nav-item"><span>⌁</span>Signals</button>
-        <button class="nav-item"><span>⊞</span>Labs</button>
-        <button class="nav-item"><span>≋</span>Datasets</button>
-      </nav>
-      <div class="side-note">
-        <div class="eyebrow">Research prototype</div>
-        <p>Wearables decide when another blood draw is likely to reveal useful new information.</p>
-      </div>
-    </aside>
+  <main class="page">
+    <header class="topbar">
+      <div class="brand"><span class="mark">P</span><span>PulseLab AI</span></div>
+      <span class="prototype">Research prototype</span>
+    </header>
 
-    <main>
-      <header>
-        <div>
-          <div class="eyebrow">Adaptive diagnostics</div>
-          <h1>Blood testing, triggered by physiology.</h1>
-        </div>
-        <div class="scenario-control">
-          <label for="scenario">Demo state</label>
-          <select id="scenario"></select>
-        </div>
-      </header>
+    <section class="intro">
+      <div class="eyebrow">Adaptive blood testing</div>
+      <h1>Should your wearable trigger a blood test?</h1>
+      <p>Compare today's physiology with your personal baseline. Gemini evaluates the pattern, explains what changed, and suggests a focused set of blood tests that could help clarify it.</p>
+    </section>
 
-      <section class="hero-grid">
-        <article class="card decision-card">
-          <div class="card-head">
-            <div>
-              <div class="eyebrow">Current recommendation</div>
-              <h2 id="status">—</h2>
+    <div class="layout">
+      <section class="card input-card">
+        <div class="card-title">
+          <div><div class="eyebrow">Your data</div><h2>Wearable signals</h2></div>
+          <button id="sampleBtn" class="ghost">Load example</button>
+        </div>
+
+        <div class="metric-head"><span>Metric</span><span>Your baseline</span><span>Current</span></div>
+        <div id="metricRows"></div>
+
+        <div class="small-grid">
+          <label>Persisting for
+            <select id="persistence"><option value="1">1 day</option><option value="2">2 days</option><option value="3" selected>3 days</option><option value="5">5 days</option><option value="7">7+ days</option></select>
+          </label>
+          <label>Days since last blood test
+            <input id="lastBlood" type="number" min="0" max="3650" placeholder="e.g. 120" />
+          </label>
+          <label>Age <span class="optional">optional</span>
+            <input id="age" type="number" min="18" max="120" placeholder="e.g. 32" />
+          </label>
+          <label>Sex <span class="optional">optional</span>
+            <select id="sex"><option value="">Not provided</option><option>female</option><option>male</option><option>other</option></select>
+          </label>
+        </div>
+
+        <label class="notes">Symptoms / context <span class="optional">optional</span>
+          <textarea id="notes" rows="3" placeholder="Example: unusually fatigued for 4 days; no hard workout, no travel, sleeping normally before this week."></textarea>
+        </label>
+
+        <button id="analyzeBtn" class="primary"><span id="buttonText">Analyze with Gemini</span><span id="spinner" class="spinner hidden"></span></button>
+        <p class="privacy">Your Gemini API key stays on the server. This page never sees it.</p>
+        <div id="error" class="error hidden"></div>
+      </section>
+
+      <section class="results">
+        <div id="emptyState" class="card empty-state">
+          <div class="empty-icon">⌁</div>
+          <h2>Enter wearable data</h2>
+          <p>PulseLab will compare current values with your baseline and ask Gemini whether the change pattern makes blood testing more informative now.</p>
+        </div>
+
+        <div id="resultView" class="hidden">
+          <section class="card decision">
+            <div class="decision-top">
+              <div><div class="eyebrow">AI testing priority</div><h2 id="recommendation">—</h2></div>
+              <div class="score"><strong id="score">0</strong><span>/100</span></div>
             </div>
-            <div class="score-ring" id="scoreRing"><span id="score">0%</span></div>
-          </div>
-          <p id="subtitle" class="muted"></p>
-          <div class="decision-metrics">
-            <div><span class="metric-label">Model confidence</span><strong id="confidence">—</strong></div>
-            <div><span class="metric-label">Physiology anomaly</span><strong id="anomaly">—</strong></div>
-            <div><span class="metric-label">Last blood draw</span><strong id="days">—</strong></div>
-          </div>
-          <div class="recommendation" id="recommendation"></div>
-        </article>
+            <h3 id="headline"></h3>
+            <p id="summary"></p>
+            <div id="redFlag" class="red-flag hidden"></div>
+            <div class="meta"><span id="modelUsed"></span><span id="generatedAt"></span></div>
+          </section>
 
-        <article class="card timeline-card">
-          <div class="card-title-row">
-            <div><div class="eyebrow">7-day personal trajectory</div><h3>Wearable deviation</h3></div>
-            <div class="legend"><span class="dot hr"></span>RHR <span class="dot hrv"></span>HRV <span class="dot sleep"></span>Sleep</div>
-          </div>
-          <div id="timeline" class="timeline"></div>
-        </article>
-      </section>
+          <section class="card">
+            <div class="eyebrow">Why</div><h2>Signals driving the result</h2>
+            <div id="reasons" class="reason-list"></div>
+          </section>
 
-      <section class="content-grid">
-        <article class="card labs-card">
-          <div class="card-title-row">
-            <div><div class="eyebrow">Predicted lab movement</div><h3>What might have changed?</h3></div>
-            <span class="chip">iPOP + NHANES + BIG IDEAs</span>
-          </div>
-          <div id="labs"></div>
-        </article>
-        <article class="card reasons-card">
-          <div class="eyebrow">Why this recommendation?</div>
-          <h3>Evidence stack</h3>
-          <div id="reasons"></div>
-        </article>
-      </section>
+          <section class="card">
+            <div class="eyebrow">What to measure</div><h2>Blood tests to consider</h2>
+            <p class="section-note">These are model-generated tests to discuss with a clinician, not orders or diagnoses.</p>
+            <div id="tests" class="test-list"></div>
+          </section>
 
-      <section class="card sources-card">
-        <div class="card-title-row">
-          <div><div class="eyebrow">Multi-dataset ensemble</div><h3>Every dataset has a different job</h3></div>
-          <div class="availability"><span class="live-dot"></span> Public sources wired</div>
+          <section class="card two-col">
+            <div><div class="eyebrow">Next step</div><p id="nextStep" class="next-step"></p></div>
+            <div><div class="eyebrow">Uncertainty</div><ul id="uncertainty"></ul></div>
+          </section>
         </div>
-        <div id="sources" class="sources-grid"></div>
       </section>
+    </div>
 
-      <footer>Research demo only — not validated for clinical decision-making.</footer>
-    </main>
-  </div>
+    <footer>This prototype is not a medical device and cannot determine whether a laboratory result is abnormal. Seek medical care for concerning symptoms rather than relying on this tool.</footer>
+  </main>
   <script src="app.js"></script>
 </body>
 </html>
