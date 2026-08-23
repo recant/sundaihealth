@@ -1,3 +1,4 @@
+import './forecast.js';
 import './chat.js';
 
 const $ = id => document.getElementById(id);
