@@ -1,62 +1,60 @@
-# PulseLab AI
+# PulseLab / BloodNeedNet
 
-A research prototype for **event-triggered blood testing from wearable physiology**.
+PulseLab is a research prototype for **continuous, event-triggered blood testing from wearable physiology**.
 
-The user enters a personal baseline and current wearable metrics (resting HR, HRV, sleep, steps, temperature, SpO2, respiratory rate, and optionally CGM). A small deterministic preprocessing layer computes change-from-baseline features and persistence. A server-side Gemini model then returns:
+There is no “Analyze” button and no LLM in the decision path. The app continuously recomputes as wearable values change.
 
-- an AI testing-priority score,
-- `NO_TEST`, `WATCH`, or `CONSIDER_TESTING_SOON`,
-- plain-English reasons tied to the supplied wearable signals,
-- a focused list of standard blood tests to consider and why,
-- uncertainty and next steps.
+## Model
 
-This is a **research/demo system, not a medical device**. It does not diagnose disease or know whether a laboratory result is abnormal.
+`BloodNeedNet v0.1` is a supervised multilabel neural network trained from same-participant NHANES 2013–2014 wrist accelerometry and laboratory data. The training pipeline constructs day-level examples relative to each participant's prior wearable baseline and predicts whether four focused blood panels contain a prespecified out-of-range target:
 
-## Run locally
+- glycemic → Hemoglobin A1c
+- CBC → complete blood count
+- metabolic → comprehensive metabolic panel
+- lipid → lipid panel
+- plus an `any_abnormal` head used for overall expected testing yield
 
-From `frontend/`:
+The browser loads the exported neural-network weights from `frontend/model/bloodneed-model.json` and performs inference locally. A personal physiology-drift signal from resting HR, HRV, sleep, steps, temperature, SpO2, respiratory rate, and optional CGM modulates urgency and provides person-specific reasons.
 
-```bash
-npm i -g vercel
-vercel dev
-```
+The training target is **screening yield**, not a diagnosis and not proof that a test is medically necessary. This is not a validated medical device.
 
-Create `.env.local` in `frontend/`:
+## Train the model
 
 ```bash
-GEMINI_API_KEY=your_key_here
-# optional; defaults to gemini-3.5-flash
-GEMINI_MODEL=gemini-3.5-flash
+python -m pip install pandas numpy scikit-learn requests pyreadstat
+python training/train_model.py
 ```
 
-Then open the local URL printed by Vercel.
-
-## Deploy on Vercel
-
-Import `recant/sundaihealth` and set the Vercel project's **Root Directory** to `frontend`.
-
-In **Project Settings → Environment Variables**, add:
+The script downloads the public NHANES files directly from CDC, trains the MLP with participant-level holdout, prints held-out AUROCs, and writes:
 
 ```text
-GEMINI_API_KEY = <your Gemini API key>
+frontend/model/bloodneed-model.json
 ```
 
-Apply it to Production (and Preview if desired), then redeploy.
+GitHub Actions also retrains automatically whenever `training/**` changes. See `.github/workflows/train-model.yml`.
 
-The browser never receives the Gemini API key. The serverless function calls Gemini's Interactions API with `store: false` and returns only the structured analysis.
+## Run the app
 
-## API
+Because inference is static/browser-side, no API key is required.
 
-`POST /api/analyze`
-
-Example body:
-
-```json
-{
-  "baseline": {"resting_hr": 58, "hrv": 56, "sleep_hours": 7.5, "spo2": 98},
-  "current": {"resting_hr": 69, "hrv": 37, "sleep_hours": 5.9, "spo2": 96},
-  "persistence_days": 3,
-  "days_since_last_blood_test": 150,
-  "notes": "Unusually fatigued for three days; no hard workout or travel."
-}
+```bash
+cd frontend
+python -m http.server 8000
 ```
+
+Open `http://localhost:8000`. Any edit to the wearable fields updates the model immediately.
+
+## Deploy
+
+On Vercel, import `recant/sundaihealth` and set **Root Directory** to `frontend`. No build command or environment variables are required.
+
+## Data sources used in v0.1 training
+
+- NHANES 2013–2014 `PAXDAY_H`: wrist ActiGraph daily summaries
+- `DEMO_H`: age/sex used for target definitions and optional model context
+- `GHB_H`: glycohemoglobin
+- `CBC_H`: CBC
+- `BIOPRO_H`: standard biochemistry profile
+- `HDL_H`: HDL cholesterol
+
+Future versions should add genuinely longitudinal wearable + repeated-lab cohorts so the target can become *new lab change within the next N days*, rather than cross-sectional screening yield.
