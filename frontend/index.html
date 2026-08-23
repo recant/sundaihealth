@@ -8,6 +8,8 @@
   <link rel="stylesheet" href="whoop.css">
   <link rel="stylesheet" href="telemetry.css">
   <link rel="stylesheet" href="tabs.css">
+  <link rel="stylesheet" href="population.css">
+  <link rel="stylesheet" href="measurements.css">
 </head>
 <body>
 <main class="page app-page">
@@ -16,6 +18,7 @@
     <nav class="app-nav" aria-label="PulseLab sections">
       <button class="nav-tab active" data-tab="overview" type="button">Overview</button>
       <button class="nav-tab" data-tab="testing" type="button">Testing</button>
+      <button class="nav-tab" data-tab="measurements" type="button">Measurements</button>
       <button class="nav-tab" data-tab="population" type="button">Population</button>
       <button class="nav-tab" data-tab="live" type="button">Live data</button>
       <button class="nav-tab" data-tab="assistant" type="button">Ask PulseLab</button>
@@ -54,8 +57,13 @@
     </div>
   </section>
 
+  <section class="tab-panel" id="tab-measurements" data-tab-panel="measurements">
+    <div class="tab-hero"><div><div class="eyebrow">Measurements</div><h1>Your physiology over time.</h1><p>Explore the measurements PulseLab has collected, click any day to inspect it, and see your blood-testing history alongside the wearable stream.</p></div></div>
+    <div id="measurementsContent"></div>
+  </section>
+
   <section class="tab-panel" id="tab-population" data-tab-panel="population">
-    <div class="tab-hero"><div><div class="eyebrow">Population</div><h1>People whose physiology looks like yours.</h1><p>See where your current pattern sits in the training cohort and what blood-panel abnormalities appeared among the closest anonymized analogs.</p></div></div>
+    <div class="tab-hero"><div><div class="eyebrow">Population</div><h1>People whose physiology looks like yours.</h1><p>Explore your nearest study-space analogs, click a person to inspect their longitudinal demo trajectory, and see how those similarities inform your testing cadence.</p></div></div>
     <div id="populationContent"></div>
   </section>
 
@@ -88,7 +96,7 @@
   </section>
 
   <section class="tab-panel" id="tab-assistant" data-tab-panel="assistant">
-    <div class="tab-hero"><div><div class="eyebrow">Ask PulseLab</div><h1>Ask about your result.</h1><p>The assistant reads the current BloodNeedNet state, testing plan, and wearable context before answering.</p></div></div>
+    <div class="tab-hero"><div><div class="eyebrow">Ask PulseLab</div><h1>Ask about your result.</h1><p>The assistant reads the current BloodNeedNet state, testing plan, population match, and wearable context before answering.</p></div></div>
     <div id="assistantContent" class="assistant-shell"></div>
   </section>
 
@@ -98,5 +106,8 @@
 <script type="module" src="telemetry.js"></script>
 <script type="module" src="tabs.js"></script>
 <script type="module" src="population.js"></script>
+<script type="module" src="measurements.js"></script>
+<script type="module" src="forecast.js"></script>
+<script type="module" src="chat.js"></script>
 </body>
 </html>

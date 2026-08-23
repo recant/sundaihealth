@@ -1,100 +1,28 @@
 const $=id=>document.getElementById(id);
-let MODEL=null,lastSignature='';
-
-function num(id){const el=$(id);if(!el||el.value==='')return null;const n=Number(el.value);return Number.isFinite(n)?n:null;}
-function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
-function pct(cur,base){return Number.isFinite(cur)&&Number.isFinite(base)&&Math.abs(base)>1e-9?(cur-base)/Math.abs(base):null;}
-function pos(z){return clamp(50+(Number(z)||0)*16,4,96);}
-
-async function getModel(){
-  if(MODEL)return MODEL;
-  try{const r=await fetch('./model/bloodneed-model.json',{cache:'no-store'});if(r.ok)MODEL=await r.json();}catch(_){ }
-  return MODEL;
-}
-
-function rawFeatures(model){
-  const bs=num('b_sleep_hours'),cs=num('c_sleep_hours'),ba=num('b_steps'),ca=num('c_steps');
-  const sex=$('sex')?.value;
-  return {
-    age:num('age'),sex_male:sex==='male'?1:sex==='female'?0:null,
-    baseline_sleep_h:bs,current_sleep_h:cs,sleep_delta_pct:pct(cs,bs),activity_delta_pct:pct(ca,ba),
-    persistence_days:Number(num('persistence')||1)
-  };
-}
-
-function featureVector(model){
-  const names=model?.panel_model?.feature_names||[],raw=rawFeatures(model);
-  const med=model?.panel_model?.imputer_median||[],mean=model?.panel_model?.scaler_mean||[],scale=model?.panel_model?.scaler_scale||[];
-  return names.map((name,i)=>{
-    const v=Number.isFinite(raw[name])?raw[name]:med[i];
-    return (v-mean[i])/(scale[i]||1);
-  });
-}
-
-function demoRecords(z){
-  return Array.from({length:8},(_,i)=>({
-    id:`DEMO-${String(i+1).padStart(2,'0')}`,
-    age_band:['20–29','30–39','20–29','40–49'][i%4],
-    z:z.map((v,j)=>v+Math.sin((i+1)*(j+1))*0.32+(i-3.5)*0.035),
-    outcomes:{glycemic:i<4?1:0,cbc:[1,5].includes(i)?1:0,metabolic:[0,2,6].includes(i)?1:0,lipid:[2,3,7].includes(i)?1:0},
-    demo:true
-  }));
-}
-
-function buildShell(){
-  const target=$('populationContent');if(!target||$('populationShell'))return;
-  target.innerHTML=`<div id="populationShell" class="population-shell">
-    <section class="card population-hero-card">
-      <div class="population-score-row"><div><div class="eyebrow">Closest physiology match</div><h2 id="populationHeadline">Finding people like you…</h2><p id="populationSummary" class="muted"></p></div><div class="similarity-score"><strong id="similarityScore">—</strong><span>% similar</span></div></div>
-      <div id="cohortProfile" class="cohort-profile"></div>
-      <div class="population-note">Black = you. Green = closest anonymized analog. Center line = training-cohort typical value in BloodNeedNet's standardized feature space.</div>
-    </section>
-    <div class="population-grid">
-      <section class="card"><div class="eyebrow">Nearest neighbors</div><h2>Closest cohort members</h2><div id="analogPeople" class="analog-list"></div></section>
-      <section class="card"><div class="eyebrow">What showed up in their bloodwork</div><h2>Nearest-5 outcome pattern</h2><div id="outcomeBars" class="outcome-bars"></div><div id="populationCaveat" class="population-note"></div></section>
-    </div>
-  </div>`;
-}
-
-function renderProfile(model,z,closest){
-  const names=model.panel_model.feature_names||[];
-  const labels={age:'Age',sex_male:'Sex feature',baseline_sleep_h:'Usual sleep',current_sleep_h:'Current sleep',sleep_delta_pct:'Sleep change',activity_delta_pct:'Activity change',persistence_days:'Persistence'};
-  const selected=['sleep_delta_pct','activity_delta_pct','current_sleep_h','persistence_days','age'].filter(k=>names.includes(k));
-  $('cohortProfile').innerHTML=selected.map(name=>{
-    const i=names.indexOf(name),uz=z[i]||0,az=closest.z?.[i]||0;
-    const direction=Math.abs(uz)<.35?'near cohort typical':uz>0?'above cohort typical':'below cohort typical';
-    return `<div class="cohort-row"><span>${labels[name]||name}</span><div class="cohort-track"><i class="cohort-analog-dot" style="left:${pos(az)}%"></i><i class="cohort-dot" style="left:${pos(uz)}%"></i></div><small>${direction}</small></div>`;
-  }).join('');
-}
-
-async function render(){
-  buildShell();const model=await getModel();if(!model?.panel_model)return;
-  const z=featureVector(model),sig=z.map(x=>x.toFixed(2)).join('|')+'|'+(model.version||'');
-  if(sig===lastSignature)return;lastSignature=sig;
-  let records=Array.isArray(model?.analog_bank?.records)?model.analog_bank.records:[];
-  const usingDemo=!records.length;if(usingDemo)records=demoRecords(z);
-  const dist=r=>Math.sqrt((r.z||[]).reduce((s,v,i)=>s+(Number(v)-z[i])**2,0)/Math.max(1,z.length));
-  const nearest=records.map(r=>({...r,d:dist(r)})).sort((a,b)=>a.d-b.d).slice(0,5),closest=nearest[0];
-  if(!closest)return;
-  const similarity=Math.round(100*Math.exp(-closest.d/2.2));
-  $('similarityScore').textContent=clamp(similarity,1,99);
-  $('populationHeadline').textContent=`You currently look most like ${closest.id} · age ${closest.age_band||'adult'}`;
-  $('populationSummary').textContent=usingDemo?'Demo comparison shown until BloodNeedNet v0.2 is retrained with its anonymized analog bank.':'Similarity is computed in the same standardized feature space used by BloodNeedNet.';
-  renderProfile(model,z,closest);
-
-  const label={glycemic:'A1c / glycemic',cbc:'CBC',metabolic:'CMP / metabolic',lipid:'Lipid'};
-  $('analogPeople').innerHTML=nearest.map((r,i)=>{
-    const hits=Object.keys(label).filter(k=>r.outcomes?.[k]).map(k=>label[k]);
-    const sim=Math.round(100*Math.exp(-r.d/2.2));
-    return `<div class="analog-person"><div class="analog-avatar">${i+1}</div><div><h3>${r.id} · age ${r.age_band||'adult'}</h3><p>${hits.length?`Abnormal targets: ${hits.join(', ')}`:'No target abnormality among the four modeled panels'}</p></div><div class="analog-distance">${clamp(sim,1,99)}% match</div></div>`;
-  }).join('');
-
-  const rates=Object.keys(label).map(k=>({k,n:nearest.reduce((s,r)=>s+Number(r.outcomes?.[k]||0),0)})).sort((a,b)=>b.n-a.n);
-  $('outcomeBars').innerHTML=rates.map(r=>`<div class="outcome-row"><span>${label[r.k]}</span><div class="outcome-track"><i style="width:${r.n/5*100}%"></i></div><b>${r.n}/5</b></div>`).join('');
-  $('populationCaveat').textContent=usingDemo
-    ? 'DEMO cohort: these neighbor cards are synthetic placeholders. Retrain v0.2 to replace them with anonymized NHANES analogs.'
-    : 'These are same-participant lab abnormalities from the training cohort—not future disease outcomes. Similarity does not imply the same diagnosis or future trajectory.';
-}
-
-function boot(){buildShell();render();document.addEventListener('input',()=>setTimeout(render,160));document.addEventListener('change',()=>setTimeout(render,160));window.addEventListener('pulselab:tab',e=>{if(e.detail?.tab==='population')render();});setInterval(render,1800);}
+let MODEL=null,lastSignature='',selectedId=null;
+const PANELS={glycemic:'Hemoglobin A1c',cbc:'CBC',metabolic:'CMP / metabolic',lipid:'Lipid panel'};
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const sim=d=>clamp(Math.round(100*Math.exp(-d/2.2)),1,99);
+const n=id=>{const v=$(id)?.value;if(v==null||v==='')return null;const x=Number(v);return Number.isFinite(x)?x:null};
+const pct=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(b)>1e-9?(a-b)/Math.abs(b):null;
+const cadence=d=>[3,7,14,21,30,45,60,90].reduce((a,b)=>Math.abs(b-d)<Math.abs(a-d)?b:a,7);
+const windowText=d=>d<=3?'within 72 hours':d<=7?'within 7 days':d<=14?'within 2 weeks':d<=21?'within 3 weeks':d<=30?'in about 1 month':d<=60?`in about ${Math.round(d/7)} weeks`:`in about ${Math.round(d/30)} months`;
+function hash(s){let h=2166136261;for(const c of String(s))h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0}
+function rand(seed,i){const x=Math.sin((seed+1)*12.9898+i*78.233)*43758.5453;return x-Math.floor(x)}
+async function model(){if(MODEL)return MODEL;try{const r=await fetch('./model/bloodneed-model.json',{cache:'no-store'});if(r.ok)MODEL=await r.json()}catch(_){}return MODEL}
+function features(m){const bs=n('b_sleep_hours'),cs=n('c_sleep_hours'),ba=n('b_steps'),ca=n('c_steps'),sex=$('sex')?.value;const raw={age:n('age'),sex_male:sex==='male'?1:sex==='female'?0:null,baseline_sleep_h:bs,current_sleep_h:cs,sleep_delta_pct:pct(cs,bs),activity_delta_pct:pct(ca,ba),persistence_days:Number(n('persistence')||1)};return (m.panel_model.feature_names||[]).map((k,i)=>{const v=Number.isFinite(raw[k])?raw[k]:m.panel_model.imputer_median[i];return(v-m.panel_model.scaler_mean[i])/(m.panel_model.scaler_scale[i]||1)})}
+function trajectory(r,i=0){if(Array.isArray(r.trajectory)&&r.trajectory.length>3)return r.trajectory;const seed=hash(r.id||i),hits=Object.values(r.outcomes||{}).filter(Boolean).length,panel=Object.keys(PANELS).find(k=>r.outcomes?.[k])||Object.keys(PANELS)[seed%4],days=[-60,-30,-14,0,14,30,60,90];return days.map((day,j)=>{const t=j/(days.length-1),drift=(.38+hits*.15+rand(seed,3)*.24)*Math.max(0,t-.2),recover=j>=5&&rand(seed,18)>.45?(j-4)*.08:0;return{day,risk:clamp(28+drift*55-recover*30+(rand(seed,j)-.5)*7,12,92),resting_hr:Math.round(57+drift*14-recover*5+(rand(seed,j+20)-.5)*3),hrv:Math.round(58-drift*24+recover*9+(rand(seed,j+40)-.5)*5),sleep:Number((7.6-drift*1.6+recover*.5+(rand(seed,j+60)-.5)*.35).toFixed(1)),event:j===4?`Blood draw: ${PANELS[panel]}`:j===5&&hits?'Abnormal result reviewed':null}})}
+function enrich(r,i,synthetic){const seed=hash(r.id||i),panel=r.follow_up_panel||Object.keys(PANELS).find(k=>r.outcomes?.[k])||Object.keys(PANELS)[seed%4];return{...r,study:r.study||(synthetic?'Synthetic longitudinal demo':'NHANES analog bank'),follow_up_panel:panel,follow_up_days:Number.isFinite(Number(r.follow_up_days))?Number(r.follow_up_days):[3,7,14,21,30,45][seed%6],trajectory:trajectory(r,i),synthetic_history:synthetic||!Array.isArray(r.trajectory)}}
+function demos(z){const ages=['20–29','30–39','40–49','50–59','30–39','20–29','60–69','40–49','50–59','30–39','70–79','20–29'];return Array.from({length:12},(_,i)=>enrich({id:`STUDY-${String(i+1).padStart(2,'0')}`,age_band:ages[i],z:z.map((v,j)=>v+Math.sin((i+1)*(j+1))*.34+(i-5.5)*.03),outcomes:{glycemic:[0,1,4,7,10].includes(i)?1:0,cbc:[1,5,8].includes(i)?1:0,metabolic:[0,2,6,9].includes(i)?1:0,lipid:[2,3,7,11].includes(i)?1:0},follow_up_days:[7,14,7,30,14,21,7,14,30,21,45,14][i]},i,true))}
+function shell(){const t=$('populationContent');if(!t||$('populationShell'))return;t.innerHTML=`<div id="populationShell" class="population-shell population-v2"><section class="card population-hero-card"><div class="population-score-row"><div><div class="eyebrow">Closest physiology match</div><h2 id="populationHeadline">Finding people like you…</h2><p id="populationSummary" class="muted"></p></div><div class="similarity-score"><strong id="similarityScore">—</strong><span>% similar</span></div></div><div class="similarity-advice"><div><span>Similarity-informed retest window</span><strong id="analogRetestWindow">—</strong></div><div><span>Panel suggested by closest analogs</span><strong id="analogRetestPanel">—</strong></div><p id="analogRetestReason"></p></div></section><div class="population-workbench"><section class="card cohort-map-card"><div class="section-heading"><div><div class="eyebrow">Interactive cohort</div><h2>Click a person to inspect their history</h2></div><span class="demo-chip">ANONYMIZED / DEMO</span></div><div class="cohort-map-wrap"><div id="cohortMap" class="cohort-map"><div class="map-axis map-axis-x">activity pattern →</div><div class="map-axis map-axis-y">sleep pattern →</div><button class="cohort-node you" type="button" style="left:50%;top:50%" aria-label="You"><span>YOU</span></button></div><div class="map-legend"><span><i class="legend-you"></i>You</span><span><i class="legend-person"></i>Study participant</span><span>Closer = more similar in BloodNeedNet feature space</span></div></div><div id="analogPeople" class="analog-list compact-analog-list"></div></section><section class="card participant-detail-card"><div id="participantDetail"></div></section></div><div class="population-grid"><section class="card"><div class="eyebrow">You vs selected participant</div><h2>Feature-by-feature comparison</h2><div id="cohortProfile" class="cohort-profile"></div><div class="population-note">Black = you. Green = selected analog. Center = training-cohort typical.</div></section><section class="card"><div class="eyebrow">What showed up in their bloodwork</div><h2>Nearest-5 outcome pattern</h2><div id="outcomeBars" class="outcome-bars"></div><div id="populationCaveat" class="population-note"></div></section></div></div>`}
+function point(r,z,names){const ai=Math.max(0,names.indexOf('activity_delta_pct')),si=Math.max(0,names.indexOf('sleep_delta_pct'));return{x:clamp(50+(Number(r.z?.[ai]||0)-Number(z[ai]||0))*18,8,92),y:clamp(50-(Number(r.z?.[si]||0)-Number(z[si]||0))*18,10,90)}}
+function drawMap(records,z,names,nearest){const map=$('cohortMap');map.querySelectorAll('.cohort-node.person').forEach(x=>x.remove());records.slice(0,18).forEach((r,i)=>{const p=point(r,z,names),b=document.createElement('button');b.type='button';b.className=`cohort-node person${nearest.has(r.id)?' nearest':''}${selectedId===r.id?' selected':''}`;b.style.left=`${p.x}%`;b.style.top=`${p.y}%`;b.dataset.personId=r.id;b.innerHTML=`<span>${i+1}</span>`;b.title=`${r.id} · ${sim(r.d)}% match`;b.addEventListener('click',()=>select(r.id,records,z,names));map.appendChild(b)})}
+function path(vals){const min=Math.min(...vals),max=Math.max(...vals),range=Math.max(1e-6,max-min);return vals.map((v,i)=>`${i?'L':'M'}${(16+i/Math.max(1,vals.length-1)*528).toFixed(1)},${(16+(1-(v-min)/range)*138).toFixed(1)}`).join(' ')}
+function participant(r){const tr=r.trajectory||[],last=tr[tr.length-1],hits=Object.keys(PANELS).filter(k=>r.outcomes?.[k]).map(k=>PANELS[k]),labels=tr.map((p,i)=>`<span style="left:${i/Math.max(1,tr.length-1)*100}%">${p.day===0?'index':`${p.day>0?'+':''}${p.day}d`}</span>`).join(''),events=tr.filter(p=>p.event).map(p=>`<div class="trajectory-event"><b>${p.day>0?'+':''}${p.day} days</b><span>${p.event}</span></div>`).join('');$('participantDetail').innerHTML=`<div class="participant-head"><div><div class="eyebrow">Selected study participant</div><h2>${r.id}</h2><p>${r.age_band||'Adult'} · ${r.study}</p></div><div class="participant-match"><strong>${sim(r.d)}</strong><span>% match</span></div></div><div class="participant-outcome"><span>Bloodwork observed</span><strong>${hits.length?hits.join(' · '):'No target abnormality in modeled panels'}</strong></div><div class="trajectory-block"><div class="trajectory-chart-head"><span>Health-signal burden over time</span><b>${r.synthetic_history?'synthetic demo trajectory':'study trajectory'}</b></div><div class="trajectory-chart"><svg viewBox="0 0 560 170" preserveAspectRatio="none"><line x1="16" y1="42" x2="544" y2="42"></line><line x1="16" y1="85" x2="544" y2="85"></line><line x1="16" y1="128" x2="544" y2="128"></line><path d="${path(tr.map(x=>Number(x.risk)))}"></path></svg><div class="trajectory-labels">${labels}</div></div><div class="trajectory-events">${events||'<div class="trajectory-event"><span>No modeled follow-up event.</span></div>'}</div></div><div class="participant-metrics"><div><span>Resting HR at follow-up</span><b>${last?.resting_hr??'—'} bpm</b></div><div><span>HRV at follow-up</span><b>${last?.hrv??'—'} ms</b></div><div><span>Sleep at follow-up</span><b>${last?.sleep??'—'} h</b></div></div><div class="participant-followup"><span>What PulseLab learns from this analog</span><p>Demo follow-up cadence: <strong>${r.follow_up_days} days</strong>; modeled panel: <strong>${PANELS[r.follow_up_panel]||r.follow_up_panel}</strong>.</p></div><div class="population-note">${r.synthetic_history?'The longitudinal path is synthetic demo data layered onto the model-space analog. It is not a claim about a real NHANES participant’s future course.':'This history is derived from fields present in the analog record.'}</div>`}
+function compare(m,z,r){const names=m.panel_model.feature_names||[],labels={age:'Age',sex_male:'Sex feature',baseline_sleep_h:'Usual sleep',current_sleep_h:'Current sleep',sleep_delta_pct:'Sleep change',activity_delta_pct:'Activity change',persistence_days:'Persistence'},show=['sleep_delta_pct','activity_delta_pct','current_sleep_h','persistence_days','age'].filter(x=>names.includes(x));$('cohortProfile').innerHTML=show.map(k=>{const i=names.indexOf(k),u=z[i]||0,a=r.z?.[i]||0,pos=x=>clamp(50+Number(x)*16,4,96);return`<div class="cohort-row"><span>${labels[k]||k}</span><div class="cohort-track"><i class="cohort-analog-dot" style="left:${pos(a)}%"></i><i class="cohort-dot" style="left:${pos(u)}%"></i></div><small>${Math.abs(u)<.35?'near typical':u>0?'above typical':'below typical'}</small></div>`}).join('')}
+function advice(nearest){const w=nearest.map(r=>Math.exp(-r.d*1.2)),tot=w.reduce((a,b)=>a+b,0)||1,days=cadence(nearest.reduce((s,r,i)=>s+r.follow_up_days*w[i],0)/tot),pw={};nearest.forEach((r,i)=>pw[r.follow_up_panel]=(pw[r.follow_up_panel]||0)+w[i]);const panel=Object.entries(pw).sort((a,b)=>b[1]-a[1])[0]?.[0]||'metabolic';return{days,panel,confidence:Math.round(nearest.reduce((s,r,i)=>s+sim(r.d)*w[i],0)/tot),n:nearest.length,similarity:sim(nearest[0].d),synthetic:nearest.some(r=>r.synthetic_history)}}
+function publish(a){try{localStorage.setItem('pulselab-analog-rec-v1',JSON.stringify({...a,updatedAt:Date.now()}))}catch(_){}window.dispatchEvent(new CustomEvent('pulselab:analog-recommendation',{detail:a}))}
+function select(id,records,z,names){selectedId=id;const r=records.find(x=>x.id===id)||records[0];participant(r);compare(MODEL,z,r);document.querySelectorAll('[data-person-id]').forEach(x=>x.classList.toggle('selected',x.dataset.personId===id))}
+async function render(){shell();const m=await model();if(!m?.panel_model)return;const z=features(m),sig=z.map(x=>x.toFixed(2)).join('|')+'|'+m.version;if(sig===lastSignature&&$('analogPeople')?.children.length)return;lastSignature=sig;let records=Array.isArray(m.analog_bank?.records)?m.analog_bank.records:[],usingDemo=!records.length;records=usingDemo?demos(z):records.map((r,i)=>enrich(r,i,false));const dist=r=>Math.sqrt((r.z||[]).reduce((s,v,i)=>s+(Number(v)-Number(z[i]||0))**2,0)/Math.max(1,z.length)),ranked=records.map(r=>({...r,d:dist(r)})).sort((a,b)=>a.d-b.d),nearest=ranked.slice(0,5),closest=nearest[0];if(!closest)return;if(!selectedId||!ranked.some(r=>r.id===selectedId))selectedId=closest.id;const selected=ranked.find(r=>r.id===selectedId)||closest;$('similarityScore').textContent=sim(closest.d);$('populationHeadline').textContent=`Your closest match is ${closest.id} · age ${closest.age_band||'adult'}`;$('populationSummary').textContent=usingDemo?'Similarity uses the BloodNeedNet feature space; longitudinal follow-ups are explicitly synthetic demo histories.':'Similarity uses BloodNeedNet’s standardized feature space; missing repeated follow-up is demo-filled and labeled.';const a=advice(nearest);$('analogRetestWindow').textContent=`${windowText(a.days)} · ~${a.days} days`;$('analogRetestPanel').textContent=PANELS[a.panel]||a.panel;$('analogRetestReason').textContent=`The ${a.n} closest analogs produce a similarity-weighted cadence with ${a.confidence}% average match confidence.`;publish(a);drawMap(ranked,z,m.panel_model.feature_names||[],new Set(nearest.map(r=>r.id)));$('analogPeople').innerHTML=nearest.map((r,i)=>`<button class="analog-person interactive${r.id===selectedId?' selected':''}" type="button" data-person-id="${r.id}"><div class="analog-avatar">${i+1}</div><div><h3>${r.id} · age ${r.age_band||'adult'}</h3><p>${Object.keys(PANELS).filter(k=>r.outcomes?.[k]).map(k=>PANELS[k]).join(', ')||'No modeled target abnormality'}</p></div><div class="analog-distance">${sim(r.d)}% match</div></button>`).join('');$('analogPeople').querySelectorAll('[data-person-id]').forEach(b=>b.addEventListener('click',()=>select(b.dataset.personId,ranked,z,m.panel_model.feature_names||[])));participant(selected);compare(m,z,selected);const rates=Object.keys(PANELS).map(k=>({k,n:nearest.reduce((s,r)=>s+Number(r.outcomes?.[k]||0),0)})).sort((a,b)=>b.n-a.n);$('outcomeBars').innerHTML=rates.map(r=>`<div class="outcome-row"><span>${PANELS[r.k]}</span><div class="outcome-track"><i style="width:${r.n/5*100}%"></i></div><b>${r.n}/5</b></div>`).join('');$('populationCaveat').textContent=usingDemo?'Study-space similarity is computed from the model; participant trajectories and follow-up timing are synthetic placeholders for this demo.':'Observed training-cohort abnormalities are shown when available; missing longitudinal follow-up remains explicitly synthetic.'}
+function boot(){shell();render();document.addEventListener('input',()=>setTimeout(render,160));document.addEventListener('change',()=>setTimeout(render,160));window.addEventListener('pulselab:tab',e=>{if(e.detail?.tab==='population'){lastSignature='';render()}});setInterval(render,1800)}
 boot();
