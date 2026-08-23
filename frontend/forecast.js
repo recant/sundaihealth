@@ -1,26 +1,70 @@
 const $=id=>document.getElementById(id);
-let lastSignature='';
 const ANALOG_KEY='pulselab-analog-rec-v1';
+let lastSignature='';
 
-function clamp(x,a=0,b=100){return Math.max(a,Math.min(b,x));}
-function num(id){const el=$(id);if(!el||el.value==='')return null;const n=Number(el.value);return Number.isFinite(n)?n:null;}
-function addDays(date,days){const d=new Date(date);d.setDate(d.getDate()+days);return d;}
-function dateKey(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-function fmtDate(d){return d.toLocaleDateString([], {month:'short',day:'numeric'});}
-function monthName(d){return d.toLocaleDateString([], {month:'long',year:'numeric'});}
-function cadence(days){const opts=[3,7,14,21,30,45,60,90];return opts.reduce((best,x)=>Math.abs(x-days)<Math.abs(best-days)?x:best,opts[0]);}
-function windowText(days){if(days<=3)return'within 72 hours';if(days<=7)return'within 7 days';if(days<=14)return'within 2 weeks';if(days<=21)return'within 3 weeks';if(days<=30)return'in about 1 month';if(days<=60)return`in about ${Math.round(days/7)} weeks`;return`in about ${Math.round(days/30)} months`;}
-function ensureStyles(){if(document.querySelector('link[data-pulselab-forecast]'))return;const link=document.createElement('link');link.rel='stylesheet';link.href='./forecast.css';link.dataset.pulselabForecast='1';document.head.appendChild(link);}
-function buildCard(){const target=$('testingContent');if(!target||$('forecastCard'))return;const card=document.createElement('section');card.id='forecastCard';card.className='card forecast-card';card.innerHTML=`<div class="forecast-top"><div><div class="eyebrow">Testing plan</div><h2>When should you measure again?</h2></div><span class="forecast-badge">MODEL + REAL STUDY NETWORK</span></div><div class="next-test"><div class="next-test-label">Next test to consider</div><div class="next-test-row"><h3 id="nextTestName">Waiting for model state</h3><div id="nextTestWindow" class="next-test-window">—</div></div><p id="nextTestReason">PulseLab combines today’s wearable changes, how long they have lasted, prior testing, and the real-participant comparison network.</p></div><div id="similarityBasis" class="forecast-note">Open Population to compare today with real people from published studies.</div><div class="testing-section"><div class="eyebrow">If today's pattern persists</div><div id="projection" class="projection"></div></div><div class="testing-section"><div class="calendar-head"><div><div class="eyebrow">Calendar</div><h3>Past draws + suggested window</h3></div><span id="calendarLabel">Demo history is labeled.</span></div><div id="calendarGrid" class="calendar-grid"></div><div id="calendarEvents" class="calendar-events"></div></div><div class="forecast-note">Research demo only. The published participant outcomes are real; PulseLab’s match score and suggested timing are not validated medical risk predictions.</div>`;target.appendChild(card);}
-function parsePanels(){return [...document.querySelectorAll('#panelBars .bar-row')].map(row=>({label:row.querySelector('span')?.textContent?.trim()||'',p:Number((row.querySelector('b')?.textContent||'').replace('%',''))||0})).filter(x=>x.label).sort((a,b)=>b.p-a.p);}
-function readAnalogRecommendation(){try{const x=JSON.parse(localStorage.getItem(ANALOG_KEY)||'null');if(!x||!Number.isFinite(Number(x.days)))return null;return {...x,days:clamp(Number(x.days),3,90),similarity:Number(x.similarity)||null};}catch(_){return null;}}
-function modelTiming(score){if(score>=75)return 3;if(score>=62)return 7;if(score>=45)return 14;return 30;}
-function recommendation(){const score=Number(($('score')?.textContent||'').trim());const safe=Number.isFinite(score)?score:0;const top=parsePanels()[0]||{label:'focused blood panel',p:0};const analog=readAnalogRecommendation();const baseDays=modelTiming(safe);let days=baseDays;if(analog)days=safe>=45?cadence(baseDays*.65+analog.days*.35):cadence(Math.max(baseDays,analog.days));const persistence=Number(num('persistence')||1);const analogPhrase=analog?` The Population network currently places this pattern near real published participants; its demo timing suggests ${windowText(analog.days)}${analog.similarity?` (closest displayed match ${Math.round(analog.similarity)}%)`:''}.`:'';const reason=safe>=45?`${top.label} is the highest-ranked current panel (${Math.round(top.p)}%). Testing priority is ${Math.round(safe)}/100 and this pattern has persisted for ${persistence} day${persistence===1?'':'s'}.${analogPhrase}`:`No strong event-triggered draw right now. If the signal strengthens, ${top.label} is currently the highest-ranked panel (${Math.round(top.p)}%).${analogPhrase}`;return {score:safe,top,days,window:windowText(days),reason,date:addDays(new Date(),days),analog};}
-function persistenceBoost(days){return clamp((Math.max(1,Math.min(7,days))-1)/6,0,1)*8;}
-function renderProjection(rec){const p=Number(num('persistence')||1),base=rec.score-persistenceBoost(p);const scenarios=[['Now',p],['+3 days',Math.min(7,p+3)],['+7 days',7]];$('projection').innerHTML=scenarios.map(([label,days])=>`<div class="projection-item"><span>${label}</span><strong>${Math.round(clamp(base+persistenceBoost(days)))}/100</strong><small>if the same pattern persists</small></div>`).join('');}
-function readLabHistory(){try{const profile=JSON.parse(localStorage.getItem('pulselab-personal-profile-v1')||'null');const real=(profile?.lab_feedback||[]).map(x=>({date:new Date(x.at),name:(x.panel||'panel').replaceAll('_',' '),result:x.outcome?'abnormal':'normal',synthetic:false})).filter(x=>Number.isFinite(x.date.getTime()));if(real.length)return real.slice(-6);}catch(_){ }const now=new Date();return [{date:addDays(now,-94),name:'CBC',result:'normal',synthetic:true},{date:addDays(now,-63),name:'CMP',result:'normal',synthetic:true},{date:addDays(now,-31),name:'Hemoglobin A1c',result:'normal',synthetic:true}];}
-function renderMonth(monthDate,events,recommendedDate){const y=monthDate.getFullYear(),m=monthDate.getMonth(),first=new Date(y,m,1),last=new Date(y,m+1,0);const days=[];for(let i=0;i<first.getDay();i++)days.push('<span class="day blank">0</span>');const today=dateKey(new Date()),rec=dateKey(recommendedDate),eventKeys=new Set(events.map(e=>dateKey(e.date)));for(let d=1;d<=last.getDate();d++){const key=dateKey(new Date(y,m,d)),classes=['day'];if(key===today)classes.push('today');if(eventKeys.has(key))classes.push('tested');if(key===rec)classes.push('recommended');days.push(`<span class="${classes.join(' ')}">${d}</span>`);}return `<div class="month"><div class="month-title">${monthName(monthDate)}</div><div class="weekdays"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div><div class="days">${days.join('')}</div></div>`;}
-function renderCalendar(rec){const events=readLabHistory(),now=new Date();const months=[-2,-1,0,1].map(o=>new Date(now.getFullYear(),now.getMonth()+o,1));$('calendarGrid').innerHTML=months.map(m=>renderMonth(m,events,rec.date)).join('');const rows=[...events.sort((a,b)=>a.date-b.date),{date:rec.date,name:rec.top.label,result:rec.score>=45?'suggested':'recheck',recommended:true}];$('calendarEvents').innerHTML=rows.map(e=>`<div class="calendar-event ${e.synthetic?'synthetic':''}"><span class="date">${fmtDate(e.date)}</span><b>${e.name}${e.synthetic?' · DEMO':''}</b><span class="result">${e.result}</span></div>`).join('');}
-function renderForecast(){if(!$('forecastCard'))return;const rec=recommendation(),sig=[rec.score,rec.top.label,rec.top.p,num('persistence'),$('profileLabs')?.textContent,rec.analog?.days,rec.analog?.panel,rec.analog?.similarity,rec.analog?.source].join('|');if(sig===lastSignature)return;lastSignature=sig;$('nextTestName').textContent=rec.score>=45?rec.top.label:`No test yet · ${rec.top.label} ranks highest`;$('nextTestWindow').textContent=`${rec.window} · ${fmtDate(rec.date)}`;$('nextTestReason').textContent=rec.reason;$('similarityBasis').textContent=rec.analog?`Real-study network: the current Population view puts today near published participant cases and suggests rechecking ${windowText(rec.analog.days)}. The participant histories are real; the match percentage and timing are PulseLab demo calculations.`:'Open Population to build the real-participant comparison network.';renderProjection(rec);renderCalendar(rec);}
-function boot(){ensureStyles();buildCard();renderForecast();document.addEventListener('input',()=>setTimeout(renderForecast,180));document.addEventListener('change',()=>setTimeout(renderForecast,180));window.addEventListener('pulselab:analog-recommendation',()=>{lastSignature='';renderForecast();});window.addEventListener('pulselab:tab',e=>{if(e.detail?.tab==='testing'){lastSignature='';renderForecast();}});setInterval(renderForecast,1400);}
+function num(id){const el=$(id);if(!el||el.value==='')return null;const x=Number(el.value);return Number.isFinite(x)?x:null;}
+function ratio(cur,base){return Number.isFinite(cur)&&Number.isFinite(base)&&Math.abs(base)>1e-9?(cur-base)/Math.abs(base):null;}
+function clamp(x,a=0,b=1){return Math.max(a,Math.min(b,x));}
+function readNetwork(){try{return JSON.parse(localStorage.getItem(ANALOG_KEY)||'null');}catch(_){return null;}}
+function fmtPct(v){return `${v>=0?'+':''}${Math.round(v*100)}%`;}
+
+function state(){
+  const hr=ratio(num('c_resting_hr'),num('b_resting_hr'));
+  const hrv=ratio(num('c_hrv'),num('b_hrv'));
+  const sleep=ratio(num('c_sleep_hours'),num('b_sleep_hours'));
+  const activity=ratio(num('c_steps'),num('b_steps'));
+  const temp=Number.isFinite(num('c_temperature_c'))&&Number.isFinite(num('b_temperature_c'))?num('c_temperature_c')-num('b_temperature_c'):null;
+  const spo2=Number.isFinite(num('c_spo2'))&&Number.isFinite(num('b_spo2'))?num('c_spo2')-num('b_spo2'):null;
+  const resp=ratio(num('c_respiratory_rate'),num('b_respiratory_rate'));
+  const parts=[
+    Number.isFinite(hr)?clamp(hr/.30):null,
+    Number.isFinite(hrv)?clamp(-hrv/.60):null,
+    Number.isFinite(sleep)?clamp(-sleep/.45):null,
+    Number.isFinite(activity)?clamp(-activity/.75):null,
+    Number.isFinite(temp)?clamp(temp/1.2):null,
+    Number.isFinite(spo2)?clamp(-spo2/5):null,
+    Number.isFinite(resp)?clamp(resp/.45):null
+  ].filter(Number.isFinite);
+  return {hr,hrv,sleep,activity,temp,spo2,resp,severity:parts.length?parts.reduce((a,b)=>a+b,0)/parts.length:0,hasData:parts.length>=2};
+}
+
+function changes(s){
+  const out=[];
+  if(Number.isFinite(s.hr)&&Math.abs(s.hr)>.05)out.push({name:'Resting heart rate',value:fmtPct(s.hr),bad:s.hr>.10});
+  if(Number.isFinite(s.hrv)&&Math.abs(s.hrv)>.08)out.push({name:'HRV',value:fmtPct(s.hrv),bad:s.hrv<-.15});
+  if(Number.isFinite(s.sleep)&&Math.abs(s.sleep)>.08)out.push({name:'Sleep',value:fmtPct(s.sleep),bad:s.sleep<-.15});
+  if(Number.isFinite(s.activity)&&Math.abs(s.activity)>.10)out.push({name:'Daily steps',value:fmtPct(s.activity),bad:s.activity<-.20});
+  if(Number.isFinite(s.temp)&&Math.abs(s.temp)>.2)out.push({name:'Skin temperature',value:`${s.temp>=0?'+':''}${s.temp.toFixed(1)} °C`,bad:s.temp>.5});
+  if(Number.isFinite(s.spo2)&&Math.abs(s.spo2)>=1)out.push({name:'Blood oxygen',value:`${s.spo2>=0?'+':''}${s.spo2.toFixed(0)} points`,bad:s.spo2<=-2});
+  if(Number.isFinite(s.resp)&&Math.abs(s.resp)>.08)out.push({name:'Breathing rate',value:fmtPct(s.resp),bad:s.resp>.15});
+  return out.sort((a,b)=>Number(b.bad)-Number(a.bad)).slice(0,5);
+}
+
+function decision(s){
+  if(!s.hasData)return{kind:'waiting',title:'Connect WHOOP or load the demo first',window:'',panel:'',body:'Once PulseLab has today’s numbers and a baseline, it can tell you what measurement would add the most information.'};
+  const alarming=s.severity>=.58 || (Number.isFinite(s.spo2)&&s.spo2<=-3) || (Number.isFinite(s.temp)&&s.temp>=1);
+  if(alarming)return{kind:'urgent',title:'Get a CBC + CMP within 72 hours',window:'Now / next 3 days',panel:'CBC + CMP',body:'Several signals moved far from your normal at the same time. Instead of waiting for the wearable to explain why, PulseLab would check blood cells and basic chemistry now.'};
+  if(s.severity>=.34)return{kind:'soon',title:'Repeat a CBC + CMP within 7 days if this continues',window:'Within 7 days',panel:'CBC + CMP',body:'This is more than normal day-to-day noise, but it is not as extreme as the demo alert. A repeat measurement becomes useful if the same pattern sticks around.'};
+  return{kind:'watch',title:'No blood test from this signal yet',window:'Keep watching',panel:'No test yet',body:'Today is still fairly close to your normal. Keep collecting data; PulseLab will change the recommendation if several signals move together.'};
+}
+
+function build(){
+  const host=$('testingContent');if(!host||$('testingDecision'))return;
+  host.innerHTML=`<section id="testingDecision" class="card testing-decision"><div class="testing-decision-head"><div><div class="eyebrow">PulseLab says</div><h2 id="testAction">Waiting for data</h2><p id="testActionBody"></p></div><div id="testWindow" class="test-window"></div></div><div id="testChanges" class="test-changes"></div><div id="testWhy" class="test-why"></div><div id="testNetworkNote" class="test-network-note"></div><div class="test-disclaimer">Research prototype, not a medical order. If these were real numbers and you felt very unwell, had trouble breathing, chest pain, fainting, or persistently low oxygen, seek medical care rather than waiting on this prototype.</div></section>`;
+}
+
+function render(){
+  build();
+  const s=state(),d=decision(s),network=readNetwork(),rows=changes(s);
+  const sig=JSON.stringify([d.kind,d.title,rows,network?.similarity,network?.source]);if(sig===lastSignature)return;lastSignature=sig;
+  const card=$('testingDecision');card.dataset.kind=d.kind;
+  $('testAction').textContent=d.title;
+  $('testActionBody').textContent=d.body;
+  $('testWindow').innerHTML=d.window?`<span>When</span><strong>${d.window}</strong>`:'';
+  $('testChanges').innerHTML=rows.length?`<div class="test-section-title">What changed</div><div class="test-change-grid">${rows.map(r=>`<div class="test-change ${r.bad?'bad':''}"><span>${r.name}</span><strong>${r.value}</strong></div>`).join('')}</div>`:'';
+  $('testWhy').innerHTML=d.panel==='CBC + CMP'?`<div class="test-section-title">Why these tests</div><div class="test-explain-grid"><div><strong>CBC</strong><span>Checks red cells, white cells and platelets.</span></div><div><strong>CMP</strong><span>Checks electrolytes, glucose, kidney and liver chemistry.</span></div><div><strong>Why both</strong><span>Your watch can show that your body changed. These tests look for changes the watch cannot measure.</span></div></div>`:'';
+  $('testNetworkNote').innerHTML=network?.similarity?`<strong>Population context:</strong> today’s pattern is close to real participants in the published-study network (${Math.round(network.similarity)}% demo match to the nearest displayed case). That match is context, not a diagnosis and not the reason the test is ordered.`:'<strong>Population context:</strong> open Population to compare today with real published study participants.';
+}
+
+function boot(){build();render();document.addEventListener('input',()=>setTimeout(render,80));document.addEventListener('change',()=>setTimeout(render,80));window.addEventListener('pulselab:analog-recommendation',()=>{lastSignature='';render();});window.addEventListener('pulselab:tab',e=>{if(e.detail?.tab==='testing'){lastSignature='';render();}});setInterval(render,1200);}
 boot();

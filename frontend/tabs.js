@@ -2,7 +2,7 @@ const tabs=[...document.querySelectorAll('[data-tab]')];
 const panels=[...document.querySelectorAll('[data-tab-panel]')];
 
 function activate(name,{updateHash=true}={}){
-  const valid=panels.some(p=>p.dataset.tabPanel===name)?name:'overview';
+  const valid=panels.some(p=>p.dataset.tabPanel===name)?name:'live';
   for(const tab of tabs){
     const active=tab.dataset.tab===valid;
     tab.classList.toggle('active',active);
@@ -11,6 +11,7 @@ function activate(name,{updateHash=true}={}){
   for(const panel of panels)panel.classList.toggle('active',panel.dataset.tabPanel===valid);
   if(updateHash)history.replaceState({},'',`#${valid}`);
   window.dispatchEvent(new CustomEvent('pulselab:tab',{detail:{tab:valid}}));
+  if(valid==='population')setTimeout(()=>window.dispatchEvent(new Event('resize')),80);
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -21,5 +22,5 @@ document.addEventListener('click',e=>{
 });
 
 const initial=location.hash.replace('#','');
-activate(initial||'overview',{updateHash:false});
-window.addEventListener('hashchange',()=>activate(location.hash.replace('#','')||'overview',{updateHash:false}));
+activate(initial||'live',{updateHash:false});
+window.addEventListener('hashchange',()=>activate(location.hash.replace('#','')||'live',{updateHash:false}));
