@@ -18,7 +18,7 @@ for name in [
     'forecast.css', 'forecast.js', 'tabs.css', 'tabs.js',
     'population-simple.css', 'population-simple.js',
     'measurements.css', 'measurements.js', 'csv-import.css',
-    'model-runtime.js', 'personalization.js'
+    'refinements.css', 'model-runtime.js', 'personalization.js'
 ]:
     shutil.copy2(HERE / name, DIST / name)
 

@@ -67,6 +67,11 @@ function humanChange(row){
   if(row.key==='spo2') return `${row.change>=0?'+':''}${row.change.toFixed(1)} points`;
   return `${row.change>=0?'+':''}${Math.round(row.change*100)}%`;
 }
+function humanValue(row,value){
+  if(row.key==='steps') return Math.round(value).toLocaleString();
+  const digits=['temperature_c','spo2','sleep_hours','respiratory_rate'].includes(row.key)?1:0;
+  return `${Number(value).toFixed(digits)}${row.unit?` ${row.unit}`:''}`;
+}
 function modelFeatures(b,c){
   return {
     age:num('age'),
@@ -80,44 +85,59 @@ function modelFeatures(b,c){
 }
 function renderProfile(){
   const s=personalizationStatus(PROFILE);
-  $('profileStage').textContent=s.dayCount>=14?'Baseline learned':'No baseline yet';
-  $('profileDays').textContent=`${s.dayCount} day${s.dayCount===1?'':'s'}`;
+  $('profileStage').textContent=s.dayCount>=14?'Baseline learned':'Baseline still limited';
+  $('profileDays').textContent=`${s.dayCount} day${s.dayCount===1?'':'s'} imported`;
   $('profileConfidence').textContent=`${s.confidence}%`;
   $('profileLabs').textContent=`${s.labCount} blood result${s.labCount===1?'':'s'}`;
   const last=PROFILE.last_import;
   if(last?.source==='whoop_csv'){
     const file=last.filename?`${last.filename} · `:'';
-    $('csvImportStatus').textContent=`${file}${last.rows} days loaded.`;
+    $('csvImportStatus').textContent=`${file}${last.rows} daily records imported. The file is parsed in this browser.`;
     $('csvImportStatus').classList.add('ok');
   }
+}
+function updateMethod(rows,hasHistory){
+  const days=personalizationStatus(PROFILE).dayCount;
+  const bad=rows.filter(r=>r.z>=1.2);
+  if($('baselineMethodTitle')) $('baselineMethodTitle').textContent=hasHistory?`${days} imported days define the baseline`:'Waiting for WHOOP history';
+  if($('baselineMethodBody')) $('baselineMethodBody').textContent=hasHistory
+    ? 'PulseLab uses prior daily measurements to estimate the usual level and variability of each signal before comparing the simulated live state.'
+    : 'At least several prior days are needed before the current state can be interpreted relative to you rather than a generic reference.';
+  if($('currentMethodBody')) $('currentMethodBody').textContent='The current stream is simulated and intentionally abnormal for the demo. It is compared with, but never added to, the imported historical baseline.';
+  if($('triggerMethodTitle')) $('triggerMethodTitle').textContent=hasHistory?`${bad.length} measurements currently cross the deviation threshold`:'No comparison yet';
+  if($('triggerMethodBody')) $('triggerMethodBody').textContent=hasHistory
+    ? (bad.length>=3?'The testing rule is activated because several independent measurements are abnormal at the same time. This reduces the chance that one noisy sensor value drives the recommendation.':'Fewer than three measurements currently cross the deviation threshold, so the testing rule is not activated.')
+    : 'Testing is considered only after the current state can be compared with a learned personal baseline.';
 }
 function updateLiveCard(rows,hasHistory){
   const card=$('liveAlertCard'), metrics=$('liveAlertMetrics');
   if(!hasHistory){
     card.className='card live-alert waiting';
-    $('liveAlertKicker').textContent='WAITING FOR YOUR HISTORY';
-    $('liveAlertTitle').textContent='Upload your WHOOP export.';
-    $('liveAlertBody').textContent='Then PulseLab can compare this live stream with what is normal for you.';
+    $('liveAlertKicker').textContent='BASELINE REQUIRED';
+    $('liveAlertTitle').textContent='Upload WHOOP history to establish your normal range.';
+    $('liveAlertBody').textContent='PulseLab needs prior measurements before it can determine whether the current simulated live pattern is materially different from your usual physiology.';
     $('liveAlertAction').classList.add('hidden');
     metrics.innerHTML='';
+    updateMethod(rows,false);
     return;
   }
   const bad=rows.filter(r=>r.z>=1.2).slice(0,5);
   if(bad.length>=3){
     card.className='card live-alert bad';
-    $('liveAlertKicker').textContent=`${bad.length} SIGNALS OFF YOUR BASELINE`;
-    $('liveAlertTitle').textContent="Something's off.";
-    $('liveAlertBody').textContent='Several signals moved together. Do not ignore this pattern.';
-    $('liveAlertAction').textContent='Get a CBC + CMP';
+    $('liveAlertKicker').textContent=`${bad.length} MEASUREMENTS OUTSIDE YOUR USUAL RANGE`;
+    $('liveAlertTitle').textContent='Your current physiology is significantly different from your baseline.';
+    $('liveAlertBody').textContent='Multiple independent signals are moving in an unfavorable direction at the same time. That coordinated change is the reason PulseLab recommends a CBC + CMP within 72 hours rather than treating any one measurement as sensor noise.';
+    $('liveAlertAction').textContent='Review testing recommendation';
     $('liveAlertAction').classList.remove('hidden');
   } else {
     card.className='card live-alert good';
-    $('liveAlertKicker').textContent='CLOSE TO YOUR BASELINE';
-    $('liveAlertTitle').textContent='Nothing major changed.';
-    $('liveAlertBody').textContent='The live stream is still close to your usual range.';
+    $('liveAlertKicker').textContent='CURRENT STATE WITHIN EXPECTED RANGE';
+    $('liveAlertTitle').textContent='The live pattern is close to your learned baseline.';
+    $('liveAlertBody').textContent='No multi-signal deviation currently crosses the testing threshold. Individual measurements may move, but the pattern is not broad enough to trigger a new blood test.';
     $('liveAlertAction').classList.add('hidden');
   }
-  metrics.innerHTML=bad.map(r=>`<div><span>${r.label}</span><strong>${humanChange(r)}</strong></div>`).join('');
+  metrics.innerHTML=bad.map(r=>`<div><span>${r.label}</span><strong>${humanChange(r)}</strong><small>${humanValue(r,r.baseline)} → ${humanValue(r,r.current)}</small></div>`).join('');
+  updateMethod(rows,true);
 }
 function render(){
   if(!MODEL) return;
@@ -138,23 +158,26 @@ function render(){
   const probs=personalizeProbabilities(runPanelModel(MODEL,modelFeatures(b,c)),PROFILE);
   const strength=rows.length ? 1-Math.exp(-rows.reduce((s,r)=>s+Math.min(r.z,3),0)/(rows.length*1.1)) : 0;
   const score=hasHistory?clamp(.25*(probs.any_abnormal||0)+.75*strength):0;
-  const direct=hasHistory && rows.filter(r=>r.z>=1.2).length>=3;
+  const badRows=rows.filter(r=>r.z>=1.2);
+  const direct=hasHistory && badRows.length>=3;
 
   $('score').textContent=String(Math.round(score*100));
-  $('recommendation').textContent=direct?'GET A CBC + CMP':'KEEP WATCHING';
-  $('headline').textContent=direct?'Several live signals are off your baseline.':'No strong change yet.';
-  $('summary').textContent=direct?'Get a CBC + CMP within 72 hours.':'Keep collecting data.';
+  $('recommendation').textContent=direct?'CBC + CMP WITHIN 72 HOURS':'NO NEW BLOOD TEST';
+  $('headline').textContent=direct?'Several current measurements are outside the range learned from your WHOOP history.':'The current pattern does not cross the multi-signal testing threshold.';
+  $('summary').textContent=direct
+    ? `${badRows.length} independent measurements are abnormal at the same time relative to your imported baseline. PulseLab recommends a CBC + CMP within 72 hours to add blood-cell and chemistry information that wearable sensors cannot provide.`
+    : 'PulseLab is not seeing enough coordinated deviation across independent measurements to justify a new blood test from the current signal alone.';
   $('modelUsed').textContent=MODEL.name||'BloodNeedNet';
-  $('generatedAt').textContent='now';
-  $('reasons').innerHTML=rows.slice(0,5).map(r=>`<div class="reason"><strong>${r.label}: ${humanChange(r)}</strong></div>`).join('');
+  $('generatedAt').textContent='current state';
+  $('reasons').innerHTML=rows.slice(0,5).map(r=>`<div class="reason"><strong>${r.label}: ${humanValue(r,r.baseline)} → ${humanValue(r,r.current)} (${humanChange(r)})</strong></div>`).join('');
   $('tests').innerHTML=direct
-    ? '<article class="test-item"><h3>CBC</h3></article><article class="test-item"><h3>CMP</h3></article>'
-    : '<article class="test-item"><h3>No test yet</h3></article>';
+    ? '<article class="test-item"><h3>CBC</h3><p>Blood-cell counts and related indices.</p></article><article class="test-item"><h3>CMP</h3><p>Electrolytes, glucose, kidney markers and liver markers.</p></article>'
+    : '<article class="test-item"><h3>No event-triggered panel</h3></article>';
   $('panelBars').innerHTML=direct
     ? '<div class="bar-row"><span>CBC + CMP</span><b>recommended</b></div>'
-    : '<div class="bar-row"><span>No test yet</span></div>';
-  $('modelDrivers').textContent='';
-  window.dispatchEvent(new CustomEvent('pulselab:state',{detail:{direct,score,rows}}));
+    : '<div class="bar-row"><span>No event-triggered panel</span></div>';
+  $('modelDrivers').textContent=direct?`Trigger: ${badRows.length} current measurements crossed the personal-deviation threshold at the same time.`:'Trigger not met.';
+  window.dispatchEvent(new CustomEvent('pulselab:state',{detail:{direct,score,rows,badRows,baseline:b,current:c}}));
 }
 function schedule(){ clearTimeout(timer); timer=setTimeout(render,90); }
 
@@ -207,7 +230,7 @@ function recordsFromWhoopCsv(text){
     sleepHours:idx(['sleep duration hours','sleep hours']),
     steps:idx(['steps','daily steps'])
   };
-  if(cols.date<0 || (cols.rhr<0 && cols.hrv<0)) throw new Error('Use WHOOP physiological_cycles.csv. I could not find the date/RHR/HRV columns.');
+  if(cols.date<0 || (cols.rhr<0 && cols.hrv<0)) throw new Error('Use WHOOP physiological_cycles.csv. The date, resting-heart-rate or HRV columns could not be identified.');
   const records=[];
   for(const cells of table.slice(1)){
     const rawDate=cells[cols.date];
@@ -222,12 +245,12 @@ function recordsFromWhoopCsv(text){
     if(Object.keys(rec).length>1) records.push(rec);
   }
   records.sort((a,b)=>a.date-b.date);
-  if(records.length<3) throw new Error('I found too few usable WHOOP days in this file.');
+  if(records.length<3) throw new Error('Fewer than three usable WHOOP days were found in this file.');
   return records;
 }
 async function importCsv(file){
   const status=$('csvImportStatus');
-  status.textContent='Reading file…'; status.classList.remove('ok','error');
+  status.textContent='Reading and parsing the CSV…'; status.classList.remove('ok','error');
   try{
     const text=await file.text();
     const records=recordsFromWhoopCsv(text);
