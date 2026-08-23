@@ -15,7 +15,8 @@ function blankProfile() {
     wearable_days: {},
     panel_offsets: Object.fromEntries(PANEL_KEYS.map(k => [k, 0])),
     panel_feedback_counts: Object.fromEntries(PANEL_KEYS.map(k => [k, 0])),
-    lab_feedback: []
+    lab_feedback: [],
+    last_import: null
   };
 }
 
@@ -27,26 +28,47 @@ export function loadProfile() {
   } catch (_) { return blankProfile(); }
 }
 
-export function saveProfile(profile) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+export function saveProfile(profile) { localStorage.setItem(STORAGE_KEY, JSON.stringify(profile)); }
+export function clearProfile() { localStorage.removeItem(STORAGE_KEY); return blankProfile(); }
+
+function cleanMetrics(current) {
+  const clean = {};
+  for (const k of METRIC_KEYS) if (Number.isFinite(current?.[k])) clean[k] = Number(current[k]);
+  return clean;
 }
 
-export function clearProfile() {
-  localStorage.removeItem(STORAGE_KEY);
-  return blankProfile();
+function trimHistory(profile) {
+  const keys = Object.keys(profile.wearable_days || {}).sort();
+  for (const old of keys.slice(0, Math.max(0, keys.length - 180))) delete profile.wearable_days[old];
 }
 
 export function observeToday(profile, current, date = new Date()) {
-  const clean = {};
-  for (const k of METRIC_KEYS) if (Number.isFinite(current?.[k])) clean[k] = Number(current[k]);
+  const clean = cleanMetrics(current);
   if (!Object.keys(clean).length) return profile;
   const key = localDateKey(date);
   profile.wearable_days ||= {};
   profile.wearable_days[key] = { ...(profile.wearable_days[key] || {}), ...clean };
-  const keys = Object.keys(profile.wearable_days).sort();
-  for (const old of keys.slice(0, Math.max(0, keys.length - 180))) delete profile.wearable_days[old];
+  trimHistory(profile);
   saveProfile(profile);
   return profile;
+}
+
+export function importWearableHistory(profile, records, source = 'import') {
+  profile.wearable_days ||= {};
+  let imported = 0;
+  for (const rec of records || []) {
+    const date = rec?.date instanceof Date ? rec.date : new Date(rec?.date);
+    if (!Number.isFinite(date.getTime())) continue;
+    const clean = cleanMetrics(rec);
+    if (!Object.keys(clean).length) continue;
+    const key = localDateKey(date);
+    profile.wearable_days[key] = { ...(profile.wearable_days[key] || {}), ...clean };
+    imported += 1;
+  }
+  trimHistory(profile);
+  profile.last_import = { source, rows: imported, at: new Date().toISOString() };
+  saveProfile(profile);
+  return { profile, imported };
 }
 
 function priorValues(profile, metric, today = localDateKey()) {
@@ -125,7 +147,7 @@ export function seedDemoHistory(profile) {
   for (let i = 14; i >= 1; i--) {
     const d = new Date(today); d.setDate(today.getDate() - i);
     const wobble = (i % 5) - 2;
-    const rec = {
+    profile.wearable_days[localDateKey(d)] = {
       resting_hr: base.resting_hr + wobble * 0.35,
       hrv: base.hrv - wobble * 0.8,
       sleep_hours: base.sleep_hours + wobble * 0.06,
@@ -134,7 +156,6 @@ export function seedDemoHistory(profile) {
       spo2: base.spo2,
       respiratory_rate: base.respiratory_rate + wobble * 0.05
     };
-    profile.wearable_days[localDateKey(d)] = rec;
   }
   saveProfile(profile);
   return profile;
