@@ -11,6 +11,7 @@ function activate(name,{updateHash=true}={}){
   for(const panel of panels)panel.classList.toggle('active',panel.dataset.tabPanel===valid);
   if(updateHash)history.replaceState({},'',`#${valid}`);
   window.dispatchEvent(new CustomEvent('pulselab:tab',{detail:{tab:valid}}));
+  if(valid==='population')setTimeout(()=>window.dispatchEvent(new Event('resize')),80);
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
