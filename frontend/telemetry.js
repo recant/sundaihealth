@@ -1,98 +1,62 @@
-import './forecast.js';
-import './chat.js';
+const $=id=>document.getElementById(id);
+window.PULSELAB_SYNTHETIC_LIVE=true;
 
-const $ = id => document.getElementById(id);
-
-const state = {
-  points: [],
-  hr: 64,
-  velocity: 0,
-  phase: Math.random() * Math.PI * 2,
+const LIVE={
+  resting_hr:79,
+  hrv:24,
+  sleep_hours:4.7,
+  steps:2600,
+  temperature_c:34.65,
+  spo2:92.8,
+  respiratory_rate:20.8
 };
+const state={points:[],hr:82,velocity:0,phase:0};
 
-function finiteInput(id, fallback) {
-  const el = $(id);
-  const value = Number(el?.value);
-  return Number.isFinite(value) && el?.value !== '' ? value : fallback;
+function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+function seedInputs(){
+  for(const [key,value] of Object.entries(LIVE)){
+    const el=$(`c_${key}`); if(el) el.value=String(value);
+  }
+  const p=$('persistence'); if(p) p.value='5';
+  document.dispatchEvent(new Event('input',{bubbles:true}));
 }
-
-function clamp(x, a, b) {
-  return Math.max(a, Math.min(b, x));
-}
-
-function sourceLabel() {
-  const connected = document.querySelector('.whoop-card')?.classList.contains('source-success');
-  return connected ? 'WHOOP-ANCHORED · SYNTHETIC LIVE TRACE' : 'SYNTHETIC DEMO STREAM';
-}
-
-function makePoint() {
-  const anchor = finiteInput('c_resting_hr', 64);
-  state.phase += 0.14;
-  state.velocity = state.velocity * 0.76 + (Math.random() - 0.5) * 1.2;
-  const respiratoryWave = Math.sin(state.phase) * 1.7;
-  const pull = (anchor - state.hr) * 0.08;
-  const occasionalMotion = Math.random() < 0.025 ? 3 + Math.random() * 5 : 0;
-  state.hr = clamp(state.hr + state.velocity * 0.35 + pull + respiratoryWave * 0.08 + occasionalMotion, 48, 118);
+function makePoint(){
+  state.phase+=.18;
+  state.velocity=state.velocity*.72+(Math.random()-.5)*1.1;
+  const pull=(82-state.hr)*.09;
+  const wave=Math.sin(state.phase)*1.6;
+  state.hr=clamp(state.hr+state.velocity*.35+pull+wave*.12+(Math.random()<.035?Math.random()*4:0),72,103);
   state.points.push(state.hr);
-  if (state.points.length > 72) state.points.shift();
+  if(state.points.length>72)state.points.shift();
 }
-
-function pathFor(points, width, height, pad = 9) {
-  if (!points.length) return '';
-  const min = Math.min(...points, 50) - 4;
-  const max = Math.max(...points, 90) + 4;
-  const range = Math.max(1, max - min);
-  return points.map((value, index) => {
-    const x = pad + (index / Math.max(1, points.length - 1)) * (width - pad * 2);
-    const y = pad + (1 - (value - min) / range) * (height - pad * 2);
-    return `${index ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+function pathFor(points,w,h,pad=9){
+  if(!points.length)return'';
+  const min=Math.min(...points)-4,max=Math.max(...points)+4,range=Math.max(1,max-min);
+  return points.map((v,i)=>{
+    const x=pad+(i/Math.max(1,points.length-1))*(w-pad*2);
+    const y=pad+(1-(v-min)/range)*(h-pad*2);
+    return`${i?'L':'M'}${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
 }
-
-function render() {
-  if (!$('hrTrace')) return;
-  const width = 700, height = 160;
-  const path = pathFor(state.points, width, height);
-  $('hrTrace').setAttribute('d', path);
-
-  if ($('hrArea')) {
-    const area = path ? `${path} L691,151 L9,151 Z` : '';
-    $('hrArea').setAttribute('d', area);
-  }
-
-  const now = Math.round(state.hr);
-  const min = Math.round(Math.min(...state.points));
-  const max = Math.round(Math.max(...state.points));
-  $('hrNow').textContent = now;
-  $('hrRange').textContent = `${min}–${max} bpm over visible window`;
-  $('telemetrySource').textContent = sourceLabel();
-  $('telemetryClock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-  const hrvAnchor = finiteInput('c_hrv', 54);
-  const respAnchor = finiteInput('c_respiratory_rate', 14.5);
-  const spo2Anchor = finiteInput('c_spo2', 98);
-  const tempAnchor = finiteInput('c_temperature_c', 36.6);
-  $('telemetryHrv').textContent = `${Math.max(12, Math.round(hrvAnchor + (Math.random() - 0.5) * 2))} ms`;
-  $('telemetryResp').textContent = `${clamp(respAnchor + (Math.random() - 0.5) * 0.25, 8, 28).toFixed(1)} /min`;
-  $('telemetrySpo2').textContent = `${clamp(spo2Anchor + (Math.random() - 0.5) * 0.25, 88, 100).toFixed(1)}%`;
-  $('telemetryTemp').textContent = `${clamp(tempAnchor + (Math.random() - 0.5) * 0.04, 32, 40).toFixed(2)} °C`;
+function render(){
+  if(!$('hrTrace'))return;
+  const path=pathFor(state.points,700,160);
+  $('hrTrace').setAttribute('d',path);
+  $('hrArea')?.setAttribute('d',path?`${path} L691,151 L9,151 Z`:'');
+  $('hrNow').textContent=String(Math.round(state.hr));
+  $('hrRange').textContent=`${Math.round(Math.min(...state.points))}–${Math.round(Math.max(...state.points))} bpm`;
+  $('telemetrySource').textContent='SIMULATED LIVE';
+  $('telemetryClock').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  $('telemetryHrv').textContent=`${Math.round(LIVE.hrv+(Math.random()-.5)*1.6)} ms`;
+  $('telemetryResp').textContent=`${(LIVE.respiratory_rate+(Math.random()-.5)*.3).toFixed(1)} /min`;
+  $('telemetrySpo2').textContent=`${(LIVE.spo2+(Math.random()-.5)*.25).toFixed(1)}%`;
+  $('telemetryTemp').textContent=`${(LIVE.temperature_c+(Math.random()-.5)*.04).toFixed(2)} °C`;
 }
-
-function tick() {
-  makePoint();
+function boot(){
+  seedInputs();
+  state.hr=82;
+  for(let i=0;i<72;i++){state.hr=clamp(82+Math.sin(i/6)*2.4+(Math.random()-.5)*3,72,103);state.points.push(state.hr);}
   render();
+  setInterval(()=>{makePoint();render();},850);
 }
-
-function bootTelemetry() {
-  if (!$('hrTrace')) return;
-  const anchor = finiteInput('c_resting_hr', 64);
-  state.hr = anchor;
-  for (let i = 0; i < 72; i += 1) {
-    state.hr = clamp(anchor + Math.sin(i / 7) * 2 + (Math.random() - 0.5) * 2.6, 48, 118);
-    state.points.push(state.hr);
-  }
-  render();
-  setInterval(tick, 850);
-}
-
-bootTelemetry();
+setTimeout(boot,0);
