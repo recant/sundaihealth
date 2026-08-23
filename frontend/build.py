@@ -15,10 +15,10 @@ if DIST.exists():
 DIST.mkdir()
 
 for name in [
-    'index.html', 'app.js', 'styles.css', 'whoop.css',
+    'index.html', 'app.js', 'demo-scenario.js', 'styles.css', 'whoop.css',
     'telemetry.css', 'telemetry.js', 'chat.css', 'chat.js',
     'forecast.css', 'forecast.js', 'tabs.css', 'tabs.js',
-    'population.css', 'population.js', 'measurements.css', 'measurements.js',
+    'population-simple.css', 'population-simple.js', 'measurements.css', 'measurements.js',
     'model-runtime.js', 'personalization.js'
 ]:
     shutil.copy2(HERE / name, DIST / name)
