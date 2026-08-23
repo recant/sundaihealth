@@ -17,7 +17,8 @@ DIST.mkdir()
 for name in [
     'index.html', 'app.js', 'styles.css', 'whoop.css',
     'telemetry.css', 'telemetry.js', 'chat.css', 'chat.js',
-    'forecast.css', 'forecast.js', 'model-runtime.js', 'personalization.js'
+    'forecast.css', 'forecast.js', 'tabs.css', 'tabs.js',
+    'population.js', 'model-runtime.js', 'personalization.js'
 ]:
     shutil.copy2(HERE / name, DIST / name)
 
