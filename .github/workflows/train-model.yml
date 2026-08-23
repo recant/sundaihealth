@@ -5,10 +5,13 @@ on:
     paths:
       - 'training/**'
       - '.github/workflows/train-model.yml'
+  issues:
+    types: [opened]
 permissions:
   contents: write
 jobs:
   train:
+    if: github.event_name != 'issues' || startsWith(github.event.issue.title, '[train-model]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
