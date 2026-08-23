@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="whoop.css">
   <link rel="stylesheet" href="telemetry.css">
   <link rel="stylesheet" href="tabs.css">
-  <link rel="stylesheet" href="population.css">
+  <link rel="stylesheet" href="population-simple.css">
   <link rel="stylesheet" href="measurements.css">
 </head>
 <body>
@@ -63,7 +63,7 @@
   </section>
 
   <section class="tab-panel" id="tab-population" data-tab-panel="population">
-    <div class="tab-hero"><div><div class="eyebrow">Population</div><h1>People whose physiology looks like yours.</h1><p>Explore your nearest study-space analogs, click a person to inspect their longitudinal demo trajectory, and see how those similarities inform your testing cadence.</p></div></div>
+    <div class="tab-hero"><div><div class="eyebrow">Population</div><h1>Have real people looked like this before?</h1><p>Compare today with real de-identified people from a published Stanford wearable study, then click a person to see what actually happened to them.</p></div></div>
     <div id="populationContent"></div>
   </section>
 
@@ -82,7 +82,7 @@
         <div class="step-head"><span class="step-number">1</span><div><div class="eyebrow">Data source</div><h2>Connect once.</h2></div></div>
         <section class="source-card whoop-card"><div class="source-icon">W</div><div class="source-copy"><div class="source-title">WHOOP <span class="recommended">Best experience</span></div><p id="whoopDescription">Authorize PulseLab once. It securely syncs recent Recovery and Sleep history whenever you return.</p><div class="source-actions"><button id="whoopConnectBtn" class="primary-source">Connect WHOOP</button><button id="whoopDisconnectBtn" class="ghost hidden">Disconnect</button><span id="whoopStatus" class="source-status">Checking connection…</span></div><small>Your WHOOP password is never shared with PulseLab.</small></div></section>
         <div class="sync-strip"><span class="pulse"></span><div><strong id="syncTitle">Continuous sync</strong><p id="syncCopy">PulseLab backfills recent history, learns your baseline, and uses the newest WHOOP measurements as today's state.</p></div></div>
-        <div class="demo-row"><button id="sampleBtn" class="ghost">Load demo history</button><span>Seeds synthetic history for a complete demo.</span></div>
+        <div class="demo-row"><button id="sampleBtn" class="ghost">Load demo history</button><span>Loads an intentionally alarming demo day so the testing flow is easy to see.</span></div>
         <section class="profile-box"><div class="profile-head"><div><div class="eyebrow">Personalization</div><h3 id="profileStage">Population prior</h3></div><strong id="profileConfidence">0% personalized</strong></div><div class="profile-track"><i id="profileFill"></i></div><div class="profile-stats"><span id="profileDays">0 wearable days</span><span id="profileLabs">0 blood results</span></div></section>
       </section>
 
@@ -103,9 +103,10 @@
   <footer>Research prototype. PulseLab estimates testing yield; it is not a diagnosis, medical order, or validated medical device.</footer>
 </main>
 <script type="module" src="app.js"></script>
+<script type="module" src="demo-scenario.js"></script>
 <script type="module" src="telemetry.js"></script>
 <script type="module" src="tabs.js"></script>
-<script type="module" src="population.js"></script>
+<script type="module" src="population-simple.js"></script>
 <script type="module" src="measurements.js"></script>
 <script type="module" src="forecast.js"></script>
 <script type="module" src="chat.js"></script>
