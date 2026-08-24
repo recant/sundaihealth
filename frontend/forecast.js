@@ -52,14 +52,15 @@ function build(){
     </div>
 
     <div>
-      <div class="test-section-title">Why these tests</div>
+      <div class="test-section-title">Which test answers which question?</div>
       <div class="test-explain-grid">
-        <div><strong>CBC</strong><span id="cbcReason">Checks blood cells and can show patterns consistent with infection, inflammation, anemia, or other blood abnormalities.</span></div>
-        <div><strong>CMP</strong><span id="cmpReason">Checks electrolytes, glucose, kidney markers and liver markers that a wearable cannot measure.</span></div>
-        <div><strong>Why now</strong><span id="whyNow">Timing depends on how broad and persistent the change is compared with your baseline.</span></div>
+        <div><strong>COVID antigen or NAAT/PCR</strong><span id="targetedReason">If COVID-19 is one of the leading possibilities, this is the test that checks for SARS-CoV-2 itself. An antigen test looks for viral proteins; a NAAT/PCR looks for viral genetic material.</span></div>
+        <div><strong>CBC</strong><span id="cbcReason">Counts white cells, red cells, hemoglobin and platelets. It can show whether there is a blood-cell pattern consistent with infection, inflammation, anemia or another systemic problem, but it does not identify the pathogen.</span></div>
+        <div><strong>CMP</strong><span id="cmpReason">Measures glucose, electrolytes, kidney markers, liver enzymes and proteins. It shows whether the illness is affecting metabolism, hydration, kidneys or liver, but it does not diagnose COVID-19.</span></div>
       </div>
     </div>
 
+    <div class="test-network-note"><strong>The logic:</strong> use a disease-specific test to answer “what is it?” and broader blood work to answer “what is it doing to the body?”</div>
     <div id="testNetworkNote" class="test-network-note"></div>
     <div class="testing-actions"><button type="button" data-go-tab="population">See the study matches</button><button class="secondary" type="button" data-go-tab="measurements">Review your history</button></div>
   </section>`;
@@ -71,9 +72,9 @@ function renderCauses(alert){
     return;
   }
   host.innerHTML=`
-    <div><strong>Infection or inflammation</strong><span>This is the main disease category worth checking. Published cases in the Population view include COVID-19, Lyme disease and other inflammatory illnesses with related wearable changes.</span></div>
-    <div><strong>Acute stress or sleep loss</strong><span>These can also raise heart rate and breathing while lowering HRV. WESAD stress participants are included in the network for this reason.</span></div>
-    <div><strong>Not enough to name one disease</strong><span>The wearable pattern cannot tell COVID-19 from Lyme disease, another infection, inflammation, or a non-disease stress response. Blood testing adds information needed to narrow that down.</span></div>`;
+    <div><strong>Respiratory infection</strong><span>COVID-19 is one real published comparison in the network. Influenza and other respiratory infections can also produce overlapping wearable changes.</span></div>
+    <div><strong>Other infection or inflammation</strong><span>The Stanford cases also include Lyme disease and non-specific inflammatory illness. Wearables can flag the physiological change without identifying the exact cause.</span></div>
+    <div><strong>Non-infectious stress</strong><span>Acute stress and sleep loss can move some of the same signals, which is why the wearable pattern alone should not be treated as a diagnosis.</span></div>`;
 }
 function render(){
   build();
@@ -92,9 +93,9 @@ function render(){
     $('nextTestReason').textContent='PulseLab needs several prior days so it can tell whether the current live values are actually unusual for you.';
     $('testingChanges').innerHTML='<div class="test-change"><span>Status</span><strong>No baseline</strong></div>';
     renderCauses(false);
+    $('targetedReason').textContent='A disease-specific test only makes sense after the wearable pattern and context make that disease plausible.';
     $('cbcReason').textContent='CBC is not recommended until the live pattern can be compared with a personal baseline.';
     $('cmpReason').textContent='CMP is not recommended until the live pattern can be compared with a personal baseline.';
-    $('whyNow').textContent='No timing recommendation yet.';
     $('testNetworkNote').textContent='Population matches will become useful after the baseline is loaded.';
     return;
   }
@@ -104,30 +105,30 @@ function render(){
 
   if(alert){
     card.dataset.kind='urgent';
-    $('testingUrgency').textContent='TEST RECOMMENDED';
-    $('nextTestName').textContent='CBC + CMP';
+    $('testingUrgency').textContent='TESTING RECOMMENDED';
+    $('nextTestName').textContent='Start with a targeted infection test; add CBC + CMP for broader context';
     $('nextTestWindow').textContent='Within 72 hours';
-    $('nextTestReason').textContent=`${bad.length} measurements have moved away from your ${dayCount}-day WHOOP baseline at the same time. The pattern is broad enough to justify checking for infection, inflammation, or another systemic change.`;
-    $('cbcReason').textContent='CBC checks white cells, red cells, hemoglobin and platelets. It can reveal blood changes that help distinguish infection or inflammation from a wearable-only signal.';
-    $('cmpReason').textContent='CMP checks electrolytes, glucose, kidney markers and liver markers. It looks for metabolic or organ-level changes that WHOOP cannot see.';
-    $('whyNow').textContent='The recommendation is time-sensitive because several signals are abnormal together rather than one measurement drifting on its own.';
+    $('nextTestReason').textContent=`${bad.length} measurements have moved away from your ${dayCount}-day WHOOP baseline together. Because the nearest published examples include respiratory infection, the first question is whether a specific infection is present; the blood panels answer a different question about the body's response.`;
+    $('targetedReason').textContent='If COVID-19 is plausible from symptoms, exposure, or the closest study match, use a COVID antigen test or NAAT/PCR. That is the test that detects SARS-CoV-2. A negative antigen test may need repeat testing because antigen tests are less sensitive than NAAT/PCR.';
+    $('cbcReason').textContent='CBC counts white cells, red cells, hemoglobin and platelets. It may show infection-, inflammation-, anemia- or blood-related changes, but it cannot tell you that SARS-CoV-2 is present.';
+    $('cmpReason').textContent='CMP measures glucose, electrolytes, kidney function, liver-associated markers and proteins. It can show dehydration, metabolic disturbance, or organ involvement, but it is not a COVID diagnostic test.';
   }else{
     card.dataset.kind='stable';
-    $('testingUrgency').textContent='NO BLOOD TEST TRIGGERED';
+    $('testingUrgency').textContent='NO TEST TRIGGERED';
     $('nextTestName').textContent='Continue monitoring';
     $('nextTestWindow').textContent='No new test now';
-    $('nextTestReason').textContent=`Only ${bad.length} measurement${bad.length===1?' is':'s are'} currently outside the configured ranges. That is not enough for this prototype to recommend a new blood panel.`;
-    $('cbcReason').textContent='CBC becomes more useful when several independent measurements change together.';
-    $('cmpReason').textContent='CMP becomes more useful when several independent measurements change together.';
-    $('whyNow').textContent='One isolated wearable change is not enough to trigger testing.';
+    $('nextTestReason').textContent=`Only ${bad.length} measurement${bad.length===1?' is':'s are'} currently outside the configured ranges. That is not enough for this prototype to recommend a new test.`;
+    $('targetedReason').textContent='No condition-specific test is suggested from the current wearable pattern.';
+    $('cbcReason').textContent='CBC becomes more useful when the pattern is broad enough to raise concern for infection, inflammation, anemia, or another systemic problem.';
+    $('cmpReason').textContent='CMP becomes more useful when the pattern suggests a broader metabolic or organ-level change.';
   }
 
   const a=analog();
   if(alert){
     const match=a?.similarity?` The closest published match currently scores ${Math.round(a.similarity)}% on the PulseLab similarity scale.`:'';
-    $('testNetworkNote').innerHTML=`<strong>Published comparisons:</strong> nearby study cases include COVID-19, Lyme disease and other inflammatory illness; acute stress also produces some of the same wearable shifts.${match} The match is a similarity ranking, not the probability that you have one of those diseases.`;
+    $('testNetworkNote').innerHTML=`<strong>Published comparisons:</strong> nearby cases include COVID-19, Lyme disease and other inflammatory illness; acute stress also overlaps.${match} Similarity helps choose what to investigate next; it is not a diagnosis.`;
   }else{
-    $('testNetworkNote').innerHTML='<strong>Published comparisons:</strong> the Population page shows illness and stress cases for context, but the current wearable pattern is not broad enough to trigger blood testing.';
+    $('testNetworkNote').innerHTML='<strong>Published comparisons:</strong> the Population page shows illness and stress cases for context, but the current wearable pattern is not broad enough to trigger testing.';
   }
 }
 
