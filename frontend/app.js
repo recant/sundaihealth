@@ -99,15 +99,15 @@ function renderProfile(){
 function updateMethod(rows,hasHistory){
   const days=personalizationStatus(PROFILE).dayCount;
   const bad=rows.filter(r=>r.z>=1.2);
-  if($('baselineMethodTitle')) $('baselineMethodTitle').textContent=hasHistory?`${days} imported days define the baseline`:'Waiting for WHOOP history';
+  if($('baselineMethodTitle')) $('baselineMethodTitle').textContent=hasHistory?`${days} days define your baseline`:'Waiting for WHOOP history';
   if($('baselineMethodBody')) $('baselineMethodBody').textContent=hasHistory
-    ? 'PulseLab uses prior daily measurements to estimate the usual level and variability of each signal before comparing the simulated live state.'
-    : 'At least several prior days are needed before the current state can be interpreted relative to you rather than a generic reference.';
-  if($('currentMethodBody')) $('currentMethodBody').textContent='The current stream is simulated and intentionally abnormal for the demo. It is compared with, but never added to, the imported historical baseline.';
-  if($('triggerMethodTitle')) $('triggerMethodTitle').textContent=hasHistory?`${bad.length} measurements currently cross the deviation threshold`:'No comparison yet';
+    ? 'Your older WHOOP measurements define what is normal for you. The live demo is compared against that history.'
+    : 'Upload several prior days so the live values can be compared with your own normal range.';
+  if($('currentMethodBody')) $('currentMethodBody').textContent='The current stream is simulated for the demo. It is not added to your historical baseline.';
+  if($('triggerMethodTitle')) $('triggerMethodTitle').textContent=hasHistory?`${bad.length} readings are outside your normal range`:'No comparison yet';
   if($('triggerMethodBody')) $('triggerMethodBody').textContent=hasHistory
-    ? (bad.length>=3?'The testing rule is activated because several independent measurements are abnormal at the same time. This reduces the chance that one noisy sensor value drives the recommendation.':'Fewer than three measurements currently cross the deviation threshold, so the testing rule is not activated.')
-    : 'Testing is considered only after the current state can be compared with a learned personal baseline.';
+    ? (bad.length>=3?'Several readings changed together. That is enough to trigger the blood-test recommendation.':'Only a small number of readings are outside your range, so no blood test is triggered yet.')
+    : 'PulseLab waits for a personal baseline before making a testing recommendation.';
 }
 function updateLiveCard(rows,hasHistory){
   const card=$('liveAlertCard'), metrics=$('liveAlertMetrics');
@@ -115,7 +115,7 @@ function updateLiveCard(rows,hasHistory){
     card.className='card live-alert waiting';
     $('liveAlertKicker').textContent='BASELINE REQUIRED';
     $('liveAlertTitle').textContent='Upload WHOOP history to establish your normal range.';
-    $('liveAlertBody').textContent='PulseLab needs prior measurements before it can determine whether the current simulated live pattern is materially different from your usual physiology.';
+    $('liveAlertBody').textContent='PulseLab needs prior measurements before it can tell whether the current demo values are unusual for you.';
     $('liveAlertAction').classList.add('hidden');
     metrics.innerHTML='';
     updateMethod(rows,false);
@@ -124,16 +124,16 @@ function updateLiveCard(rows,hasHistory){
   const bad=rows.filter(r=>r.z>=1.2).slice(0,5);
   if(bad.length>=3){
     card.className='card live-alert bad';
-    $('liveAlertKicker').textContent=`${bad.length} MEASUREMENTS OUTSIDE YOUR USUAL RANGE`;
-    $('liveAlertTitle').textContent='Your current physiology is significantly different from your baseline.';
-    $('liveAlertBody').textContent='Multiple independent signals are moving in an unfavorable direction at the same time. That coordinated change is the reason PulseLab recommends a CBC + CMP within 72 hours rather than treating any one measurement as sensor noise.';
+    $('liveAlertKicker').textContent=`${bad.length} READINGS OUTSIDE YOUR NORMAL RANGE`;
+    $('liveAlertTitle').textContent='Several measurements are abnormal at the same time.';
+    $('liveAlertBody').textContent='This kind of pattern can occur with infection or inflammation, although stress and sleep loss can overlap. PulseLab recommends a CBC + CMP within 72 hours to get information the wearable cannot provide.';
     $('liveAlertAction').textContent='Review testing recommendation';
     $('liveAlertAction').classList.remove('hidden');
   } else {
     card.className='card live-alert good';
-    $('liveAlertKicker').textContent='CURRENT STATE WITHIN EXPECTED RANGE';
-    $('liveAlertTitle').textContent='The live pattern is close to your learned baseline.';
-    $('liveAlertBody').textContent='No multi-signal deviation currently crosses the testing threshold. Individual measurements may move, but the pattern is not broad enough to trigger a new blood test.';
+    $('liveAlertKicker').textContent='CLOSE TO YOUR BASELINE';
+    $('liveAlertTitle').textContent='No broad abnormal pattern right now.';
+    $('liveAlertBody').textContent='A few values may move day to day, but there is not enough change across the full set of measurements to trigger a blood test.';
     $('liveAlertAction').classList.add('hidden');
   }
   metrics.innerHTML=bad.map(r=>`<div><span>${r.label}</span><strong>${humanChange(r)}</strong><small>${humanValue(r,r.baseline)} → ${humanValue(r,r.current)}</small></div>`).join('');
@@ -163,10 +163,10 @@ function render(){
 
   $('score').textContent=String(Math.round(score*100));
   $('recommendation').textContent=direct?'CBC + CMP WITHIN 72 HOURS':'NO NEW BLOOD TEST';
-  $('headline').textContent=direct?'Several current measurements are outside the range learned from your WHOOP history.':'The current pattern does not cross the multi-signal testing threshold.';
+  $('headline').textContent=direct?'Several current measurements are outside your normal WHOOP range.':'The current pattern is still close to baseline.';
   $('summary').textContent=direct
-    ? `${badRows.length} independent measurements are abnormal at the same time relative to your imported baseline. PulseLab recommends a CBC + CMP within 72 hours to add blood-cell and chemistry information that wearable sensors cannot provide.`
-    : 'PulseLab is not seeing enough coordinated deviation across independent measurements to justify a new blood test from the current signal alone.';
+    ? `Possible explanations include infection or inflammation; acute stress and sleep loss can overlap. PulseLab recommends a CBC + CMP within 72 hours to narrow down what is happening.`
+    : 'There is not enough change across the current measurements to justify a new blood test from this signal alone.';
   $('modelUsed').textContent=MODEL.name||'BloodNeedNet';
   $('generatedAt').textContent='current state';
   $('reasons').innerHTML=rows.slice(0,5).map(r=>`<div class="reason"><strong>${r.label}: ${humanValue(r,r.baseline)} → ${humanValue(r,r.current)} (${humanChange(r)})</strong></div>`).join('');
@@ -176,7 +176,7 @@ function render(){
   $('panelBars').innerHTML=direct
     ? '<div class="bar-row"><span>CBC + CMP</span><b>recommended</b></div>'
     : '<div class="bar-row"><span>No event-triggered panel</span></div>';
-  $('modelDrivers').textContent=direct?`Trigger: ${badRows.length} current measurements crossed the personal-deviation threshold at the same time.`:'Trigger not met.';
+  $('modelDrivers').textContent=direct?`Why: ${badRows.length} readings changed together relative to your baseline.`:'Trigger not met.';
   window.dispatchEvent(new CustomEvent('pulselab:state',{detail:{direct,score,rows,badRows,baseline:b,current:c}}));
 }
 function schedule(){ clearTimeout(timer); timer=setTimeout(render,90); }
