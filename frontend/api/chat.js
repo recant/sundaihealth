@@ -7,6 +7,9 @@ Use the supplied current dashboard state. Answer the user's actual question firs
 
 Style:
 - Professional, concise, and readable by an educated non-specialist.
+- Usually answer in 2-5 complete sentences and under 180 words.
+- Plain text only. Do not use Markdown, asterisks, headings, tables, or code formatting.
+- Never end mid-sentence. Finish the answer before stopping.
 - Do not use baby talk, slogans, vague wellness language, or model-report prose.
 - Prefer concrete sentences: what changed, what it could mean, what test is recommended, and why.
 - Do not say "cohort analog", "geometric similarity", "yield", "physiological drift", "measurement modality", or "independent measurements" unless the user explicitly asks for technical detail.
@@ -43,23 +46,59 @@ function fallback(message,s={}){
   }
   return plan?`${plan}${timing?` ${timing.toLowerCase()}`:''}. ${s.testing_plan?.reason||''}`:(s.live?.summary||'Upload WHOOP history first.');
 }
-function text(json){return(json?.candidates?.[0]?.content?.parts||[]).map(p=>p?.text||'').join('').trim();}
-async function call(message,snapshot,history){
+
+function text(json){
+  return (json?.candidates?.[0]?.content?.parts||[])
+    .filter(p=>!p?.thought)
+    .map(p=>p?.text||'')
+    .join('')
+    .trim();
+}
+function finishReason(json){return String(json?.candidates?.[0]?.finishReason||'').toUpperCase();}
+function clean(reply){
+  return String(reply||'')
+    .replace(/\*\*(.*?)\*\*/g,'$1')
+    .replace(/__(.*?)__/g,'$1')
+    .replace(/`([^`]+)`/g,'$1')
+    .replace(/^#{1,6}\s+/gm,'')
+    .trim();
+}
+
+async function generate(contents,maxOutputTokens=8192){
   const response=await fetch(URL,{
     method:'POST',
     headers:{'Content-Type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},
     body:JSON.stringify({
       systemInstruction:{parts:[{text:SYSTEM}]},
-      contents:[
-        ...(history||[]).slice(-6).map(t=>({role:t.role==='assistant'?'model':'user',parts:[{text:String(t.text||'').slice(0,1200)}]})),
-        {role:'user',parts:[{text:`CURRENT DASHBOARD:\n${JSON.stringify(snapshot,null,2)}\n\nUSER: ${message}`}]}],
-      generationConfig:{maxOutputTokens:650,temperature:.25}
+      contents,
+      generationConfig:{maxOutputTokens,temperature:.25}
     })
   });
   const json=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(json?.error?.message||`Gemini error ${response.status}`);
-  const reply=text(json);if(!reply)throw new Error('Empty response');return reply;
+  return {json,reply:clean(text(json)),finish:finishReason(json)};
 }
+
+async function call(message,snapshot,history){
+  const baseContents=[
+    ...(history||[]).slice(-6).map(t=>({role:t.role==='assistant'?'model':'user',parts:[{text:String(t.text||'').slice(0,1200)}]})),
+    {role:'user',parts:[{text:`CURRENT DASHBOARD:\n${JSON.stringify(snapshot,null,2)}\n\nUSER: ${message}`}]}]
+  ];
+
+  const first=await generate(baseContents,8192);
+  if(first.reply && first.finish!=='MAX_TOKENS')return first.reply;
+
+  // Never show a visibly truncated model response. Retry once with a much tighter request.
+  const retryContents=[
+    ...baseContents,
+    ...(first.reply?[{role:'model',parts:[{text:first.reply}]}]:[]),
+    {role:'user',parts:[{text:'Rewrite the answer from the beginning in no more than 120 words. Plain text only. Use complete sentences and make sure the final sentence is finished.'}]}
+  ];
+  const retry=await generate(retryContents,8192);
+  if(retry.reply && retry.finish!=='MAX_TOKENS')return retry.reply;
+  throw new Error(`Incomplete model response (${retry.finish||first.finish||'unknown finish reason'})`);
+}
+
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='POST'){res.setHeader('Allow','POST');return res.status(405).json({error:'POST only'});}
