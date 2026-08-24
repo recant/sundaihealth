@@ -22,14 +22,12 @@ function changeRows(){
     ['Blood oxygen','spo2','delta',d=>d<-1.5],
     ['Breathing rate','respiratory_rate','pct',d=>d>.15]
   ];
-  const rows=[];
-  for(const [label,key,type,isBad] of specs){
+  return specs.map(([label,key,type,isBad])=>{
     const baseline=num(`b_${key}`),current=num(`c_${key}`);
-    if(!Number.isFinite(baseline)||!Number.isFinite(current))continue;
+    if(!Number.isFinite(baseline)||!Number.isFinite(current))return null;
     const change=type==='delta'?current-baseline:pct(current,baseline);
-    rows.push({label,key,type,baseline,current,change,bad:isBad(change)});
-  }
-  return rows;
+    return{label,key,type,baseline,current,change,bad:isBad(change)};
+  }).filter(Boolean);
 }
 function changeText(r){
   if(r.type==='delta')return `${r.change>=0?'+':''}${r.change.toFixed(1)}${r.key==='spo2'?' points':' °C'}`;
@@ -39,22 +37,43 @@ function build(){
   const target=$('testingContent');if(!target||$('testingDecision'))return;
   target.innerHTML=`<section id="testingDecision" class="card testing-decision" data-kind="waiting">
     <div class="testing-decision-head">
-      <div><div id="testingUrgency" class="eyebrow">BASELINE REQUIRED</div><h2 id="nextTestName">Upload WHOOP history before interpreting the live stream.</h2><p id="nextTestReason">PulseLab needs a personal baseline before a testing recommendation can be tied to meaningful change.</p></div>
-      <div class="test-window"><span>Recommended timing</span><strong id="nextTestWindow">Not available yet</strong></div>
+      <div><div id="testingUrgency" class="eyebrow">BASELINE REQUIRED</div><h2 id="nextTestName">Upload WHOOP history first.</h2><p id="nextTestReason">PulseLab needs your prior measurements before it can interpret the live pattern.</p></div>
+      <div class="test-window"><span>Timing</span><strong id="nextTestWindow">—</strong></div>
     </div>
+
     <div>
-      <div class="test-section-title">Measurements driving the decision</div>
+      <div class="test-section-title">What changed</div>
       <div id="testingChanges" class="test-change-grid"></div>
     </div>
-    <div class="test-explain-grid">
-      <div><strong>CBC</strong><span id="cbcReason">A complete blood count measures red cells, white cells, platelets and related indices. It adds information that a wearable cannot directly observe.</span></div>
-      <div><strong>CMP</strong><span id="cmpReason">A comprehensive metabolic panel measures electrolytes, glucose, kidney markers and liver markers, giving a broad view of systemic chemistry.</span></div>
-      <div><strong>Why this timing?</strong><span id="whyNow">The timing depends on how many independent measurements are outside the personal baseline at the same time.</span></div>
+
+    <div>
+      <div class="test-section-title">What this could mean</div>
+      <div id="possibleCauses" class="test-explain-grid"></div>
     </div>
-    <div id="testNetworkNote" class="test-network-note"><strong>Population comparison:</strong> open the Population page to see whether published participants had a similar combination of wearable changes and what happened in those studies.</div>
-    <div class="testing-actions"><button type="button" data-go-tab="population">Review published comparisons</button><button class="secondary" type="button" data-go-tab="measurements">Review your history</button></div>
-    <div class="test-disclaimer">The recommendation is generated from the uploaded wearable baseline and the simulated live state. It does not identify a diagnosis. If symptoms are severe or rapidly worsening, clinical evaluation should not wait for this prototype.</div>
+
+    <div>
+      <div class="test-section-title">Why these tests</div>
+      <div class="test-explain-grid">
+        <div><strong>CBC</strong><span id="cbcReason">Checks blood cells and can show patterns consistent with infection, inflammation, anemia, or other blood abnormalities.</span></div>
+        <div><strong>CMP</strong><span id="cmpReason">Checks electrolytes, glucose, kidney markers and liver markers that a wearable cannot measure.</span></div>
+        <div><strong>Why now</strong><span id="whyNow">Timing depends on how broad and persistent the change is compared with your baseline.</span></div>
+      </div>
+    </div>
+
+    <div id="testNetworkNote" class="test-network-note"></div>
+    <div class="testing-actions"><button type="button" data-go-tab="population">See the study matches</button><button class="secondary" type="button" data-go-tab="measurements">Review your history</button></div>
   </section>`;
+}
+function renderCauses(alert){
+  const host=$('possibleCauses');
+  if(!alert){
+    host.innerHTML=`<div><strong>No strong pattern yet</strong><span>The current measurements do not form a broad enough change to point toward a useful disease category.</span></div>`;
+    return;
+  }
+  host.innerHTML=`
+    <div><strong>Infection or inflammation</strong><span>This is the main disease category worth checking. Published cases in the Population view include COVID-19, Lyme disease and other inflammatory illnesses with related wearable changes.</span></div>
+    <div><strong>Acute stress or sleep loss</strong><span>These can also raise heart rate and breathing while lowering HRV. WESAD stress participants are included in the network for this reason.</span></div>
+    <div><strong>Not enough to name one disease</strong><span>The wearable pattern cannot tell COVID-19 from Lyme disease, another infection, inflammation, or a non-disease stress response. Blood testing adds information needed to narrow that down.</span></div>`;
 }
 function render(){
   build();
@@ -68,41 +87,47 @@ function render(){
   if(dayCount<7){
     card.dataset.kind='waiting';
     $('testingUrgency').textContent='BASELINE REQUIRED';
-    $('nextTestName').textContent='Upload WHOOP history before interpreting the live stream.';
-    $('nextTestWindow').textContent='Not available yet';
-    $('nextTestReason').textContent='A personal baseline is required so that PulseLab can distinguish a real deviation from ordinary day-to-day variation. At least several prior days are needed for this demo rule.';
-    $('testingChanges').innerHTML='<div class="test-change"><span>Current status</span><strong>No baseline</strong></div>';
-    $('whyNow').textContent='No timing recommendation is generated until the live measurements can be compared with prior WHOOP history.';
+    $('nextTestName').textContent='Upload WHOOP history first.';
+    $('nextTestWindow').textContent='—';
+    $('nextTestReason').textContent='PulseLab needs several prior days so it can tell whether the current live values are actually unusual for you.';
+    $('testingChanges').innerHTML='<div class="test-change"><span>Status</span><strong>No baseline</strong></div>';
+    renderCauses(false);
+    $('cbcReason').textContent='CBC is not recommended until the live pattern can be compared with a personal baseline.';
+    $('cmpReason').textContent='CMP is not recommended until the live pattern can be compared with a personal baseline.';
+    $('whyNow').textContent='No timing recommendation yet.';
+    $('testNetworkNote').textContent='Population matches will become useful after the baseline is loaded.';
     return;
   }
 
   $('testingChanges').innerHTML=rows.map(r=>`<div class="test-change${r.bad?' bad':''}"><span>${r.label}</span><strong>${changeText(r)}</strong><small>${formatValue(r.key,r.baseline)} → ${formatValue(r.key,r.current)}</small></div>`).join('');
+  renderCauses(alert);
 
   if(alert){
     card.dataset.kind='urgent';
-    $('testingUrgency').textContent='ACTION RECOMMENDED';
+    $('testingUrgency').textContent='TEST RECOMMENDED';
     $('nextTestName').textContent='CBC + CMP';
     $('nextTestWindow').textContent='Within 72 hours';
-    $('nextTestReason').textContent=`${bad.length} independent measurements are outside the ranges learned from ${dayCount} imported WHOOP days. The reason to test is not any single wearable value; it is the fact that heart rate, autonomic recovery, breathing, oxygenation, temperature or sleep are changing together. A blood panel adds a different measurement modality rather than asking the wearable to explain the cause.`;
-    $('cbcReason').textContent='CBC measures red blood cells, white blood cells, hemoglobin, platelets and related indices. In this setting it is useful because a broad change in heart rate, HRV and oxygenation can accompany processes that are not distinguishable from wearable data alone.';
-    $('cmpReason').textContent='CMP measures electrolytes, glucose, kidney function markers and liver-associated markers. It complements the CBC by checking basic chemistry and organ-related markers that are completely absent from the wearable stream.';
-    $('whyNow').textContent=`The trigger requires at least three independent deviations at once; ${bad.length} are currently present. The 72-hour window reflects the strength and breadth of the current demo pattern, not a diagnosis of one specific disease.`;
+    $('nextTestReason').textContent=`${bad.length} measurements have moved away from your ${dayCount}-day WHOOP baseline at the same time. The pattern is broad enough to justify checking for infection, inflammation, or another systemic change.`;
+    $('cbcReason').textContent='CBC checks white cells, red cells, hemoglobin and platelets. It can reveal blood changes that help distinguish infection or inflammation from a wearable-only signal.';
+    $('cmpReason').textContent='CMP checks electrolytes, glucose, kidney markers and liver markers. It looks for metabolic or organ-level changes that WHOOP cannot see.';
+    $('whyNow').textContent='The recommendation is time-sensitive because several signals are abnormal together rather than one measurement drifting on its own.';
   }else{
     card.dataset.kind='stable';
-    $('testingUrgency').textContent='NO EVENT-TRIGGERED BLOOD TEST';
-    $('nextTestName').textContent='No new panel from the current signal.';
-    $('nextTestWindow').textContent='Continue measuring';
-    $('nextTestReason').textContent=`Only ${bad.length} measurement${bad.length===1?' is':'s are'} currently outside the configured deviation thresholds. PulseLab does not recommend a blood draw when the pattern is narrow enough to plausibly reflect ordinary variation or one noisy sensor channel.`;
-    $('cbcReason').textContent='CBC would become more useful if a broader pattern develops across independent physiological measurements.';
-    $('cmpReason').textContent='CMP would become more useful if the current state develops into a persistent multi-signal deviation rather than an isolated change.';
-    $('whyNow').textContent='The testing trigger is intentionally based on several signals moving together, so a single changed metric does not automatically produce a blood-test recommendation.';
+    $('testingUrgency').textContent='NO BLOOD TEST TRIGGERED';
+    $('nextTestName').textContent='Continue monitoring';
+    $('nextTestWindow').textContent='No new test now';
+    $('nextTestReason').textContent=`Only ${bad.length} measurement${bad.length===1?' is':'s are'} currently outside the configured ranges. That is not enough for this prototype to recommend a new blood panel.`;
+    $('cbcReason').textContent='CBC becomes more useful when several independent measurements change together.';
+    $('cmpReason').textContent='CMP becomes more useful when several independent measurements change together.';
+    $('whyNow').textContent='One isolated wearable change is not enough to trigger testing.';
   }
 
   const a=analog();
-  if(a?.similarity){
-    $('testNetworkNote').innerHTML=`<strong>Population comparison:</strong> the nearest published participant currently has a ${Math.round(a.similarity)}% PulseLab demo match. That number is a similarity score, not a disease probability. The useful part is the participant’s actual study record, which you can inspect on the Population page.`;
+  if(alert){
+    const match=a?.similarity?` The closest published match currently scores ${Math.round(a.similarity)}% on the PulseLab similarity scale.`:'';
+    $('testNetworkNote').innerHTML=`<strong>Published comparisons:</strong> nearby study cases include COVID-19, Lyme disease and other inflammatory illness; acute stress also produces some of the same wearable shifts.${match} The match is a similarity ranking, not the probability that you have one of those diseases.`;
   }else{
-    $('testNetworkNote').innerHTML='<strong>Population comparison:</strong> the testing decision above is driven by your baseline and current measurements. The Population page is a secondary evidence layer that shows what happened in published participants with related wearable patterns.';
+    $('testNetworkNote').innerHTML='<strong>Published comparisons:</strong> the Population page shows illness and stress cases for context, but the current wearable pattern is not broad enough to trigger blood testing.';
   }
 }
 
